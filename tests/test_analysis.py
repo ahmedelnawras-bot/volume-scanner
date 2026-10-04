@@ -129,3 +129,13 @@ def test_state_cooldown_memory():
         await st.save_signal({"id": "a", "candle_close_ms": 10})
         assert len(await st.signals_between(0, 20)) == 1
     asyncio.run(run())
+
+
+def test_sl_floor_rune_case():
+    """RUNE live case: S1 just under price gave a 1% stop inside the spike candle."""
+    cfg = Config()
+    m = {"price": 0.7844, "levels": {"s1": 0.7827, "s2": 0.7721, "r1": 0.7924, "r2": 0.8091}, "atr_1h": 0.009}
+    plan = analysis.make_plan(m, "long", cfg)
+    assert plan["sl_pct"] >= cfg.MIN_SL_PCT
+    assert abs(plan["sl"] - (0.7844 - 0.0118)) < 1e-3  # max(1.5% = 0.0118, ATR 0.009)
+    assert abs(plan["size"] * (plan["entry"] - plan["sl"]) - 20) < 1e-6

@@ -72,6 +72,7 @@ def compute_metrics(s: Snapshot, cfg: Config) -> Optional[dict]:
         "from_7d_high_pct": ind.from_high_pct(price, high7),
         "base_breakout": is_bo, "base_range_pct": base_rng, "base_high": base_hi,
         "vol24h_usd": vol24,
+        "atr_1h": ind.atr(c1h, 14),
         "levels": levels,
     }
 
@@ -194,6 +195,11 @@ def make_plan(m: dict, side: str, cfg: Config) -> Optional[dict]:
     else:
         sl = lv["r1"] * (1 + buf) if lv.get("r1") else price * (1 + cfg.MAX_SL_PCT / 100)
         dist = sl - price
+    # floor: a stop inside normal 1h noise gets hit by the spike's own wick
+    floor = max(price * cfg.MIN_SL_PCT / 100, (m.get("atr_1h") or 0) * cfg.SL_ATR_MULT)
+    if dist < floor:
+        dist = floor
+        sl = price - dist if side == "long" else price + dist
     if dist <= 0:
         return None
     size = cfg.RISK_PER_TRADE_USD / dist

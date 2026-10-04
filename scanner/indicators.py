@@ -23,6 +23,15 @@ def price_change_pct(c: Candle) -> float:
     return (c.close - c.open) / c.open * 100 if c.open else 0.0
 
 
+def atr(candles: list[Candle], n: int = 14) -> Optional[float]:
+    if len(candles) < n + 1:
+        return None
+    trs = []
+    for prev, c in zip(candles[-n - 1:-1], candles[-n:]):
+        trs.append(max(c.high - c.low, abs(c.high - prev.close), abs(c.low - prev.close)))
+    return sum(trs) / n
+
+
 def sma(values: list[float], n: int) -> Optional[float]:
     if len(values) < n:
         return None

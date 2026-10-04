@@ -77,6 +77,8 @@ class Config:
     RISK_PER_TRADE_USD: float = 20.0
     SL_BUFFER_PCT: float = 0.8          # SL placed this % beyond S1/R1
     MAX_SL_PCT: float = 10.0            # flag plans whose SL is wider than this
+    MIN_SL_PCT: float = 1.5             # SL never tighter than this % ...
+    SL_ATR_MULT: float = 1.0            # ... nor tighter than this x ATR(14, 1h)
 
     # --- scheduling ------------------------------------------------------
     HOURLY_SCAN_MINUTE: int = 1         # run at HH:01
