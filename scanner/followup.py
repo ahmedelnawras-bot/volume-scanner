@@ -6,9 +6,10 @@ from typing import Optional
 
 
 def direction(sig: dict) -> int:
-    if sig.get("side") == "long":
+    side = sig.get("side") if sig.get("side") in ("long", "short") else sig.get("bias")
+    if side == "long":
         return 1
-    if sig.get("side") == "short":
+    if side == "short":
         return -1
     return 1 if sig["metrics"].get("price_chg_pct", 0) >= 0 else -1
 
@@ -69,36 +70,16 @@ def is_win(sig: dict) -> Optional[bool]:
     return res * direction(sig) > 0
 
 
-def daily_summary(last_24h: list[dict], last_7d: list[dict], lang: str = "ar") -> str:
-    from .messages import TYPES, ltr
-    ar = lang == "ar"
+def summary_stats(last_24h: list[dict], last_7d: list[dict]) -> dict:
+    """Numbers for the daily summary; wording lives in scanner.notify."""
+    def perf(s):
+        fu = s.get("followup") or {}
+        f = fu.get("24h") or fu.get("4h") or {}
+        r = f.get("result_24h", f.get("result_4h"))
+        return None if r is None else r * direction(s)
 
-    def tname(t):
-        e, n = TYPES[lang].get(t, ("", t))
-        return f"{e} {n}".strip()
-
-    lines = ["📊 <b>ملخص الـ Volume Scanner اليومي</b>" if ar else "📊 <b>Volume Scanner — daily summary</b>", ""]
-    if not last_24h:
-        lines.append("مفيش إشارات في آخر 24 ساعة." if ar else "No signals in the last 24h.")
-    else:
-        by_type = Counter(s["type"] for s in last_24h)
-        lines.append(f"عدد الإشارات (24 ساعة): {len(last_24h)}" if ar else f"Signals (24h): {len(last_24h)}")
-        lines += [f"  {tname(t)}: {n}" for t, n in by_type.most_common()]
-
-        def perf(s):
-            fu = s.get("followup") or {}
-            f = fu.get("24h") or fu.get("4h") or {}
-            r = f.get("result_24h", f.get("result_4h"))
-            return None if r is None else r * direction(s)
-
-        scored = [(perf(s), s) for s in last_24h if perf(s) is not None]
-        scored.sort(key=lambda x: x[0], reverse=True)
-        if scored:
-            lines += ["", "🏆 أحسن 3:" if ar else "Best:"]
-            lines += [f"  {s['key']} · {tname(s['type'])} · {ltr(f'{p:+.1f}%')}" for p, s in scored[:3]]
-            lines += ["📉 أسوأ 3:" if ar else "Worst:"]
-            lines += [f"  {s['key']} · {tname(s['type'])} · {ltr(f'{p:+.1f}%')}" for p, s in scored[-3:][::-1]]
-
+    scored = sorted(((perf(s), s) for s in last_24h if perf(s) is not None),
+                    key=lambda x: x[0], reverse=True)
     stats = defaultdict(lambda: [0, 0])
     for s in last_7d:
         w = is_win(s)
@@ -106,8 +87,10 @@ def daily_summary(last_24h: list[dict], last_7d: list[dict], lang: str = "ar") -
             continue
         stats[s["type"]][1] += 1
         stats[s["type"]][0] += int(w)
-    if stats:
-        lines += ["", "✅ نسبة النجاح (آخر 7 أيام):" if ar else "Win rate (7d):"]
-        for t, (w, n) in sorted(stats.items(), key=lambda x: -x[1][1]):
-            lines.append(f"  {tname(t)}: {w}/{n} ({ltr(f'{w / n * 100:.0f}%')})")
-    return "\n".join(lines)
+    return {
+        "count": len(last_24h),
+        "by_type": Counter(s["type"] for s in last_24h).most_common(),
+        "best": [(s["key"], s["type"], p) for p, s in scored[:3]],
+        "worst": [(s["key"], s["type"], p) for p, s in scored[-3:][::-1]],
+        "win_rate": [(t, w, n) for t, (w, n) in sorted(stats.items(), key=lambda x: -x[1][1])],
+    }

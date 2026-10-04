@@ -73,12 +73,22 @@ def compute_metrics(s: Snapshot, cfg: Config) -> Optional[dict]:
         "base_breakout": is_bo, "base_range_pct": base_rng, "base_high": base_hi,
         "vol24h_usd": vol24,
         "atr_1h": ind.atr(c1h, 14),
+        "last_low": last.low,
+        "last_high": last.high,
         "levels": levels,
     }
 
 
+# What the alert headline tells the trader to do.
+#   LONG / SHORT        a trade with a plan
+#   NO_LONG / NO_SHORT  warning: do not open that side
+#   WATCH               no trade yet; `bias` says which side to watch
+ACTIONS = ("LONG", "SHORT", "NO_LONG", "NO_SHORT", "WATCH")
+
+
 def classify(m: dict, cfg: Config) -> tuple[str, str, list]:
-    """Returns (signal_type, side, notes). Notes are codes; telegram.py renders them."""
+    """Returns (signal_type, side, notes). side is long / short / none.
+    Notes are language-neutral codes rendered by scanner.notify."""
     up = m["price_chg_pct"] > 0
     oi = m["oi_chg_1h_pct"]
     oi_up = oi is not None and oi > cfg.OI_FLAT_PCT
@@ -110,6 +120,9 @@ def classify(m: dict, cfg: Config) -> tuple[str, str, list]:
             notes.append("squeeze_risk")
             return "SQUEEZE_RISK", "none", notes
         else:
+            if not oi_up:  # no new money behind the move: watch, don't trade
+                notes.append("no_oi_confirm")
+                return "VOLUME_SPIKE", "none", notes
             t = "VOLUME_SPIKE"
         if squeezy:
             notes.append("funding_neg")
@@ -120,12 +133,26 @@ def classify(m: dict, cfg: Config) -> tuple[str, str, list]:
         return "NEW_SHORTS", "short", notes
     if oi_down:
         notes.append("liq_flush")
-        return "LONG_LIQUIDATION", "none", notes
-    return "VOLUME_SPIKE", "short", notes
+        return "LONG_LIQUIDATION", "long", notes  # bounce long
+    notes.append("no_oi_confirm")
+    return "VOLUME_SPIKE", "none", notes
 
 
-def score(m: dict, sig_type: str, cfg: Config, confirmed: bool) -> tuple[int, dict]:
-    up = m["price_chg_pct"] > 0
+def decide_action(sig_type: str, side: str, m: dict) -> tuple[str, str | None]:
+    """(action, bias) for the headline."""
+    if side == "long":
+        return "LONG", "long"
+    if side == "short":
+        return "SHORT", "short"
+    if sig_type == "LATE_PUMP":
+        return "NO_LONG", None
+    if sig_type == "SQUEEZE_RISK":
+        return "NO_SHORT", None
+    return "WATCH", ("long" if m["price_chg_pct"] > 0 else "short")
+
+
+def score(m: dict, sig_type: str, cfg: Config, confirmed: bool, side: str = "none") -> tuple[int, dict]:
+    up = m["price_chg_pct"] > 0  # quality of the move itself
     parts: dict[str, float] = {}
 
     r = m["rvol_1h"] or 0
@@ -176,7 +203,9 @@ def score(m: dict, sig_type: str, cfg: Config, confirmed: bool) -> tuple[int, di
     if sig_type == "LATE_PUMP":
         pen -= 30
     f = m["funding"]
-    if f is not None and ((up and f > cfg.FUNDING_AGAINST) or (not up and f < -cfg.FUNDING_AGAINST)):
+    # funding crowding is judged against the side we would trade
+    trade_long = side == "long" or (side == "none" and up)
+    if f is not None and ((trade_long and f > cfg.FUNDING_AGAINST) or (not trade_long and f < -cfg.FUNDING_AGAINST)):
         pen -= 10
     parts["penalties"] = pen
 
@@ -189,11 +218,14 @@ def make_plan(m: dict, side: str, cfg: Config) -> Optional[dict]:
         return None
     price, lv = m["price"], m["levels"]
     buf = cfg.SL_BUFFER_PCT / 100
+    # no level on the stop side (fresh low/high): stop beyond the signal candle itself
     if side == "long":
-        sl = lv["s1"] * (1 - buf) if lv.get("s1") else price * (1 - cfg.MAX_SL_PCT / 100)
+        base = lv.get("s1") or m.get("last_low")
+        sl = base * (1 - buf) if base else price * (1 - cfg.MAX_SL_PCT / 100)
         dist = price - sl
     else:
-        sl = lv["r1"] * (1 + buf) if lv.get("r1") else price * (1 + cfg.MAX_SL_PCT / 100)
+        base = lv.get("r1") or m.get("last_high")
+        sl = base * (1 + buf) if base else price * (1 + cfg.MAX_SL_PCT / 100)
         dist = sl - price
     # floor: a stop inside normal 1h noise gets hit by the spike's own wick
     floor = max(price * cfg.MIN_SL_PCT / 100, (m.get("atr_1h") or 0) * cfg.SL_ATR_MULT)
@@ -214,7 +246,8 @@ def make_plan(m: dict, side: str, cfg: Config) -> Optional[dict]:
 def build_signal(s: Snapshot, m: dict, cfg: Config, exchanges: list, timeframe: str = "1h") -> Signal:
     confirmed = len(set(exchanges)) > 1
     t, side, notes = classify(m, cfg)
-    sc, parts = score(m, t, cfg, confirmed)
+    sc, parts = score(m, t, cfg, confirmed, side)
+    action, bias = decide_action(t, side, m)
     tr = m.get("trend_4h")
     if (side == "short" and tr == "up") or (side == "long" and tr == "down"):
         notes.insert(0, f"counter_trend:{tr}")
@@ -240,4 +273,5 @@ def build_signal(s: Snapshot, m: dict, cfg: Config, exchanges: list, timeframe: 
         exchanges=sorted(set(exchanges)), type=t, side=side, score=sc, timeframe=timeframe,
         candle_close=close_iso, candle_close_ms=m["candle_close_ms"], price=m["price"],
         metrics=metrics, levels=m["levels"], plan=plan, notes=notes, score_parts=parts,
+        action=action, bias=bias,
     )

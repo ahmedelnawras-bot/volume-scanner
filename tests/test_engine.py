@@ -5,6 +5,7 @@ import time
 from scanner import engine
 from scanner.config import Config
 from scanner.models import Candle, Contract
+from scanner.notify import Notifier
 from scanner.state import State
 from tests.test_analysis import H, flat_1h, to_4h
 
@@ -54,18 +55,21 @@ class FakeEx:
         return None
 
 
-class FakeTG:
+class FakeClient:
+    """Stands in for TelegramClient; records what would be sent."""
+    dry_run = False
+
     def __init__(self):
-        self.signals, self.errors = [], []
+        self.sent = []
 
-    async def signal(self, t):
-        self.signals.append(t)
+    async def send(self, chat_id, text):
+        self.sent.append((chat_id, text))
+        return True
 
-    async def status(self, t):
-        pass
 
-    async def error(self, k, t, throttle_s=0):
-        self.errors.append(t)
+def make_notifier():
+    client = FakeClient()
+    return Notifier(client, chat_id="signals", status_chat_id="status", lang="ar"), client
 
 
 def test_hourly_scan_end_to_end(monkeypatch):
@@ -73,20 +77,23 @@ def test_hourly_scan_end_to_end(monkeypatch):
 
     async def run():
         st = await State.connect("")
-        tg = FakeTG()
-        sc = engine.Scanner(Config(), None, st, tg)
+        notifier, client = make_notifier()
+        sc = engine.Scanner(Config(), None, st, notifier)
         sent = await sc.hourly_scan()
-        assert not tg.errors, tg.errors
+        errors = [t for c, t in client.sent if c == "status"]
+        assert not errors, errors
+        signals = [t for c, t in client.sent if c == "signals"]
         assert len(sent) == 1, [s["key"] for s in sent]
         sig = sent[0]
         assert sig["key"] == "NIGHT" and sig["exchanges"] == ["binance", "okx"]
         assert sig["score_parts"]["cross_exchange"] == 15
         assert sc.last_stats["okx"]["eligible"] == 2  # TINY filtered by liquidity
-        assert "اختراق مبكر" in tg.signals[0] and "NIGHT" in tg.signals[0]
+        assert signals[0].startswith("<b>🟢 LONG | NIGHT") and "اختراق مبكر" in signals[0]
         # second scan in the same hour: cooldown blocks the repeat
         assert await sc.hourly_scan() == []
         await sc.followups()
-        print("\n" + tg.signals[0])
+        await sc.heartbeat()
+        assert "الـ Scanner شغال" in client.sent[-1][1] and client.sent[-1][0] == "status"
 
     asyncio.run(run())
 

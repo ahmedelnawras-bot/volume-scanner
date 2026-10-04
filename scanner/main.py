@@ -18,8 +18,7 @@ import aiohttp
 from .config import Config
 from .engine import Scanner
 from .state import State
-from . import messages
-from .telegram import Telegram
+from .notify import Notifier, build_notifier
 
 log = logging.getLogger("scanner")
 
@@ -27,15 +26,14 @@ log = logging.getLogger("scanner")
 async def build(cfg: Config):
     session = aiohttp.ClientSession(headers={"User-Agent": "volume-scanner/1.0"})
     state = await State.connect(cfg.REDIS_URL)
-    tg = Telegram(session, cfg.TELEGRAM_BOT_TOKEN, cfg.TELEGRAM_CHAT_ID,
-                  cfg.TELEGRAM_STATUS_CHAT_ID, cfg.DRY_RUN, cfg.ALERT_LANG)
-    return session, state, tg, Scanner(cfg, session, state, tg)
+    notifier = build_notifier(cfg, session)
+    return session, state, notifier, Scanner(cfg, session, state, notifier)
 
 
 async def run_forever(cfg: Config):
     session, state, tg, sc = await build(cfg)
     tz = ZoneInfo(cfg.TIMEZONE)
-    await tg.status(messages.started(list(sc.ex), state.is_memory, cfg.ALERT_LANG))
+    await tg.started(list(sc.ex), state.is_memory)
     # scan once at boot so the universe and the light scan are ready
     await _guard(tg, "boot", sc.hourly_scan())
     last_hour = last_light = None
@@ -71,12 +69,12 @@ async def run_forever(cfg: Config):
         await state.close()
 
 
-async def _guard(tg: Telegram, name: str, coro):
+async def _guard(tg: Notifier, name: str, coro):
     try:
         return await coro
     except Exception as e:
         log.exception("%s job failed", name)
-        await tg.error(f"job:{name}", f"{name} job failed / فشل: {e}")
+        await tg.error(f"job:{name}", f"مهمة {name} فشلت: {e}", f"{name} job failed: {e}")
 
 
 async def run_once(cfg: Config, light: bool = False):

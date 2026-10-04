@@ -2,10 +2,11 @@ import asyncio
 
 from scanner import analysis, indicators as ind
 from scanner.config import Config
-from scanner.followup import daily_summary, evaluate, is_win
+from scanner.followup import evaluate, is_win, summary_stats
+from scanner.notify.templates import daily_summary
 from scanner.models import Candle, Snapshot, normalize_base
 from scanner.state import State
-from scanner.telegram import format_signal
+from scanner.notify.templates import signal as format_signal
 
 H = 3_600_000
 T0 = 1_759_000_000_000 - (1_759_000_000_000 % H)
@@ -71,10 +72,13 @@ def test_early_breakout_like_night():
     assert sig.plan and sig.plan["sl"] < sig.price
     # risk sizing: size * (entry - sl) == risk
     assert abs(sig.plan["size"] * (sig.price - sig.plan["sl"]) - 20) < 1e-6
+    assert sig.action == "LONG"
     txt = format_signal(sig.to_dict(), "en")
-    assert "Early breakout | NIGHT-USDT-SWAP" in txt and "confirmed on both" in txt
+    assert txt.splitlines()[0] == "<b>🟢 LONG | NIGHT-USDT-SWAP</b>"
+    assert "Early breakout" in txt and "Confirmed on" in txt
     ar = format_signal(sig.to_dict(), "ar")
-    assert "اختراق مبكر" in ar and "ممنوع الشورت" in ar and "مؤكدة على المنصتين" in ar
+    assert ar.splitlines()[0] == "<b>🟢 LONG | NIGHT-USDT-SWAP</b>"
+    assert "اختراق مبكر" in ar and "متدخلش شورت" in ar and "مؤكدة على" in ar and "الخطة" in ar
 
 
 def test_matrix_types():
@@ -89,7 +93,18 @@ def test_matrix_types():
 
     s = breakout_snapshot(chg=-0.06, oi_jump=-0.12)
     m = analysis.compute_metrics(s, cfg)
-    assert analysis.classify(m, cfg)[0] == "LONG_LIQUIDATION"
+    assert analysis.classify(m, cfg)[:2] == ("LONG_LIQUIDATION", "long")  # bounce long
+    sig = analysis.build_signal(s, m, cfg, ["okx"])
+    assert sig.action == "LONG" and sig.plan
+    assert format_signal(sig.to_dict(), "ar").startswith("<b>🟢 LONG (ارتداد) |")
+
+    # spike with no OI confirmation -> WATCH with a side
+    s = breakout_snapshot(chg=-0.06, oi_jump=0.0)
+    m = analysis.compute_metrics(s, cfg)
+    sig = analysis.build_signal(s, m, cfg, ["okx"])
+    assert (sig.type, sig.action, sig.bias, sig.plan) == ("VOLUME_SPIKE", "WATCH", "short", None)
+    ar = format_signal(sig.to_dict(), "ar")
+    assert ar.startswith("<b>👀 مراقبة SHORT |") and "المستويات" in ar and "الخطة" not in ar
 
 
 def test_late_pump_penalised():
@@ -101,6 +116,7 @@ def test_late_pump_penalised():
     m = analysis.compute_metrics(s, cfg)
     t, side, _ = analysis.classify(m, cfg)
     assert t == "LATE_PUMP" and side == "none"
+    assert analysis.decide_action(t, side, m) == ("NO_LONG", None)
     sc, parts = analysis.score(m, t, cfg, False)
     assert parts["penalties"] <= -30
 
@@ -117,9 +133,10 @@ def test_followup_and_summary():
     assert f4["hit_r1"] and f4["result_4h"] > 0
     sig["followup"] = {"4h": f4, "24h": evaluate(sig, after, 24)}
     assert is_win(sig) is True
-    txt = daily_summary([sig], [sig], "en")
+    data = summary_stats([sig], [sig])
+    txt = daily_summary(data, "en")
     assert "Early breakout" in txt and "Win rate" in txt
-    assert "نسبة النجاح" in daily_summary([sig], [sig], "ar")
+    assert "نسبة النجاح" in daily_summary(data, "ar")
 
 
 def test_state_cooldown_memory():

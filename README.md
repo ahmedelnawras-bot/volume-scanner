@@ -63,18 +63,35 @@ python backtest.py --symbol NIGHT --start 2026-09-26 --end 2026-10-03 --show-ale
 
 ```
 scanner/
-  config.py        كل الإعدادات (env overrides)
-  exchanges/       OKX + Binance public REST (async)
-  indicators.py    RVOL, MAs, Bollinger %B, swings, S/R, OI change
-  analysis.py      metrics → type → score → plan  (نفس الكود للـ live والـ backtest)
-  engine.py        scan كل ساعة، 15m، متابعة، ملخص، heartbeat
-  state.py         Redis: cooldown, signals log, OI snapshots, contracts cache
-  telegram.py      إرسال + شكل الرسالة
-  followup.py      تقييم 4h/24h + الملخص اليومي
-  main.py          scheduler + CLI
-backtest.py        إعادة تشغيل على داتا تاريخية لعملة واحدة
-tests/             unit + end-to-end بداتا وهمية
+  config.py          كل الإعدادات (env overrides)
+  exchanges/         OKX + Binance public REST (async + pacing لكل endpoint)
+  indicators.py      RVOL, ATR, MAs, Bollinger %B, swings, S/R, OI change
+  analysis.py        metrics → type → action (LONG/SHORT/…) → score → plan
+  engine.py          scan كل ساعة، 15m، متابعة، ملخص، heartbeat
+  state.py           Redis: cooldown, signals log, OI snapshots, contracts cache
+  followup.py        تقييم 4h/24h + أرقام الملخص اليومي
+  main.py            scheduler + CLI
+  notify/            كل حاجة بتوصل للمستخدم (منفصلة عن منطق الـ scan)
+    terms.py         الصياغة عربي/إنجليزي ← عدّل هنا لو عايز تغيّر كلام الرسائل
+    fmt.py           تنسيق الأرقام والوقت
+    templates.py     data → نص Telegram
+    telegram_client.py  الإرسال للـ Bot API (retry, dry-run)
+    notifier.py      Notifier: الواجهة الوحيدة اللي engine/main بيكلموها
+backtest.py          إعادة تشغيل على داتا تاريخية لعملة واحدة
+tests/               unit + end-to-end بداتا وهمية
 ```
+
+### عنوان الرسالة
+
+أول سطر في كل تنبيه بيقول تعمل إيه قبل أي تفاصيل:
+
+| العنوان | المعنى |
+|---|---|
+| 🟢 LONG / 🔴 SHORT | صفقة بخطة كاملة (دخول، SL، TP، حجم) |
+| 🟢 LONG (ارتداد) | تصفية لونجات: دخول ارتداد عكس الحركة |
+| ⛔ ممنوع LONG | بامب متأخر |
+| ⛔ ممنوع SHORT | خطر Squeeze |
+| 👀 مراقبة LONG/SHORT | فوليوم من غير تأكيد OI، أو Short squeeze، أو إنذار 15m |
 
 ## ملاحظات
 

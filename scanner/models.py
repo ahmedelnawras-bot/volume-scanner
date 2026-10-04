@@ -71,6 +71,8 @@ class Signal:
     notes: list
     score_parts: dict
     followup: Optional[dict] = None
+    action: str = "WATCH"   # LONG / SHORT / NO_LONG / NO_SHORT / WATCH
+    bias: Optional[str] = None  # long / short: which side a WATCH points to
 
     def to_dict(self) -> dict:
         return asdict(self)

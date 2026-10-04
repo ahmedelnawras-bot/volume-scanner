@@ -24,7 +24,7 @@ from scanner.config import Config
 from scanner.exchanges import REGISTRY
 from scanner.followup import evaluate
 from scanner.models import Snapshot
-from scanner.messages import format_signal
+from scanner.notify.templates import signal as format_signal
 
 H = 3_600_000
 
@@ -152,7 +152,7 @@ async def main():
         if r["would_alert"] and not r["cooldown_blocked"]:
             last[r["key"]] = (r["candle_close_ms"], r["type"])
 
-    print(f"\n{'close (UTC)':17s} {'type':17s} {'score':>5s} {'ex':>12s} {'chg':>6s} {'rvol':>6s} "
+    print(f"\n{'close (UTC)':17s} {'action':9s} {'type':17s} {'score':>5s} {'ex':>12s} {'chg':>6s} {'rvol':>6s} "
           f"{'OI1h':>6s} {'4h':>7s} {'24h':>7s}  alert")
     for r in results:
         m, fu = r["metrics"], r.get("followup") or {}
@@ -160,12 +160,13 @@ async def main():
         f24 = fu.get("24h", {}).get("result_24h")
         oi = m.get("oi_chg_1h_pct")
         flag = "YES" if r["would_alert"] and not r["cooldown_blocked"] else ("cooldown" if r["cooldown_blocked"] else "-")
-        print(f"{r['candle_close'][:16].replace('T', ' '):17s} {r['type']:17s} {r['score']:5d} "
+        act = r.get("action", "") + (f"-{r['bias']}" if r.get("action") == "WATCH" else "")
+        print(f"{r['candle_close'][:16].replace('T', ' '):17s} {act:9s} {r['type']:17s} {r['score']:5d} "
               f"{'+'.join(r['exchanges']):>12s} {m['price_chg_pct']:+5.1f}% x{m['rvol_1h']:5.1f} "
               f"{(f'{oi:+.0f}%' if oi is not None else 'n/a'):>6s} "
               f"{(f'{f4:+.1f}%' if f4 is not None else '-'):>7s} {(f'{f24:+.1f}%' if f24 is not None else '-'):>7s}  {flag}")
         if a.show_alerts and flag == "YES":
-            print(format_signal(r, cfg.ALERT_LANG) + "\n")
+            print(format_signal(r, cfg.ALERT_LANG).replace("\u200e", "") + "\n")
 
     alerts = [r for r in results if r["would_alert"] and not r["cooldown_blocked"]]
     print(f"\n{len(results)} spike hour(s), {len(alerts)} alert(s).")
