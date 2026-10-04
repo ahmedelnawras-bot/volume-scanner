@@ -9,6 +9,22 @@ import os
 from dataclasses import dataclass, field, fields
 
 
+def load_dotenv(path: str = ".env") -> None:
+    """Minimal .env reader (KEY=value lines). Real environment variables win,
+    so Railway settings are never overridden by a stray local file."""
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8-sig") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key, val = key.strip(), val.strip().strip('"').strip("'")
+            if key and val and key not in os.environ:
+                os.environ[key] = val
+
+
 def _env(name: str, default):
     raw = os.getenv(name)
     if raw is None or raw == "":
@@ -87,7 +103,8 @@ class Config:
     LOG_LEVEL: str = "INFO"
 
     @classmethod
-    def load(cls) -> "Config":
+    def load(cls, env_file: str = ".env") -> "Config":
+        load_dotenv(env_file)
         cfg = cls()
         for f in fields(cls):
             setattr(cfg, f.name, _env(f.name, getattr(cfg, f.name)))

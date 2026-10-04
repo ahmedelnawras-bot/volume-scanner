@@ -39,6 +39,16 @@ python -m scanner --once --dry-run          # scan واحد، التنبيهات
 python backtest.py --symbol NIGHT --start 2026-09-26 --end 2026-10-03 --show-alerts
 ```
 
+## التشغيل على Windows
+
+1. ثبّت Python 3.12 من python.org، وعلّم على **Add python.exe to PATH**.
+2. حمّل الـ repo: زرار **Code ← Download ZIP**، وفكه في فولدر.
+3. دبل كليك على `start.bat`. أول مرة هيعمل `.env` ويفتحه في Notepad.
+4. حط `TELEGRAM_BOT_TOKEN` و `TELEGRAM_CHAT_ID`، واحفظ، ودبل كليك على `start.bat` تاني.
+5. سيب الشباك مفتوح. لو حصل crash بيعيد التشغيل لوحده بعد 30 ثانية.
+
+خلي الجهاز ميدخلش Sleep (Settings ← System ← Power). من غير `REDIS_URL` الحالة بتتحفظ في الذاكرة بس، فالـ cooldown والإشارات بيتمسحوا مع كل restart.
+
 ## النشر على Railway
 
 1. New Project → Deploy from GitHub repo → اختار الـ repo ده.
