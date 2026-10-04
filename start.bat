@@ -14,10 +14,16 @@ if not exist ".env" (
 )
 
 if not exist ".venv\Scripts\python.exe" (
-    echo First run: creating virtual environment and installing packages...
+    echo First run: creating virtual environment...
     py -3 -m venv .venv || python -m venv .venv
     ".venv\Scripts\python.exe" -m pip install --upgrade pip -q
-    ".venv\Scripts\python.exe" -m pip install -r requirements.txt -q
+)
+REM always make sure packages are there (fast when already installed, fixes half installs)
+".venv\Scripts\python.exe" -m pip install -r requirements.txt -q --disable-pip-version-check
+if errorlevel 1 (
+    echo Package install failed - check your internet connection and run start.bat again.
+    pause
+    exit /b
 )
 
 :loop
