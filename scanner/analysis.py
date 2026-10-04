@@ -215,6 +215,9 @@ def build_signal(s: Snapshot, m: dict, cfg: Config, exchanges: list, timeframe: 
     confirmed = len(set(exchanges)) > 1
     t, side, notes = classify(m, cfg)
     sc, parts = score(m, t, cfg, confirmed)
+    tr = m.get("trend_4h")
+    if (side == "short" and tr == "up") or (side == "long" and tr == "down"):
+        notes.append(f"counter-trend: 4h trend is {tr}, treat as a pullback trade")
     plan = make_plan(m, side, cfg)
     if plan:
         # price at new highs/lows has no swing level ahead: project targets at 1.5R / 3R

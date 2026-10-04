@@ -40,7 +40,20 @@ def _qty(x):
     return f"{x:.4f}"
 
 
-def format_signal(sig: dict) -> str:
+def _candle_time(sig: dict, tz_name: str) -> str:
+    try:
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        close = sig["candle_close_ms"] / 1000
+        tz = ZoneInfo(tz_name)
+        o = datetime.fromtimestamp(close - 3600, tz=timezone.utc).astimezone(tz)
+        c = datetime.fromtimestamp(close, tz=timezone.utc).astimezone(tz)
+        return f"{o:%H:%M}-{c:%H:%M} Cairo" if tz_name == "Africa/Cairo" else f"{o:%H:%M}-{c:%H:%M}"
+    except Exception:
+        return sig.get("candle_close", "")
+
+
+def format_signal(sig: dict, tz_name: str = "Africa/Cairo") -> str:
     m, lv, plan = sig["metrics"], sig["levels"], sig.get("plan")
     ex = " + ".join(e.upper() for e in sig["exchanges"])
     conf = " (confirmed on both)" if len(sig["exchanges"]) > 1 else ""
@@ -63,7 +76,7 @@ def format_signal(sig: dict) -> str:
         f"<b>[{sig['type']}] {html.escape(sig['symbol'])}</b>  |  Score {sig['score']}/100",
         f"{ex}{conf}",
         "",
-        f"Price {fp(sig['price'])}  ({_pct(m.get('price_chg_pct'))} {sig['timeframe']})",
+        f"Price {fp(sig['price'])}  ({_pct(m.get('price_chg_pct'))} {sig['timeframe']})  |  candle {_candle_time(sig, tz_name)}",
         f"RVOL  1h x{m.get('rvol_1h') or 0:.1f}" + (f"  |  4h x{rv4:.1f}" if rv4 else ""),
         f"OI    {_pct(m.get('oi_chg_1h_pct'), 0)} 1h  |  Funding {f_txt}  |  Taker buy {tk_txt}",
         f"4h    {ma_txt}  |  %B {pb:.2f}" if pb is not None else f"4h    {ma_txt}",

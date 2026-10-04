@@ -151,7 +151,7 @@ class Scanner:
                 continue
             if await self.state.in_cooldown(key, sig["type"], self.cfg.COOLDOWN_HOURS):
                 continue
-            await self.tg.signal(format_signal(sig))
+            await self.tg.signal(format_signal(sig, self.cfg.TIMEZONE))
             await self.state.mark_alert(key, sig["type"], self.cfg.COOLDOWN_HOURS)
             await self.state.save_signal(sig)
             sent.append(sig)
