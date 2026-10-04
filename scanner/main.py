@@ -104,6 +104,16 @@ def cli():
     if a.dry_run:
         cfg.DRY_RUN = True
     logging.basicConfig(level=cfg.LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    log.info("settings file: %s", cfg.ENV_FILE or "none found (.env)")
+    if cfg.DRY_RUN or not cfg.TELEGRAM_BOT_TOKEN or not cfg.TELEGRAM_CHAT_ID:
+        missing = [k for k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID") if not getattr(cfg, k)]
+        log.warning("Telegram DRY RUN - alerts print here only. Missing: %s",
+                    ", ".join(missing) or "none (DRY_RUN is on)")
+    else:
+        tok = cfg.TELEGRAM_BOT_TOKEN
+        log.info("Telegram ON -> chat %s (token %s...%s)", cfg.TELEGRAM_CHAT_ID, tok[:4], tok[-3:])
+        if cfg.TELEGRAM_CHAT_ID == tok.split(":")[0]:
+            log.error("TELEGRAM_CHAT_ID is the bot's own id - use YOUR id from @userinfobot")
     if a.once:
         asyncio.run(run_once(cfg, a.light))
     else:

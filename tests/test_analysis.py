@@ -139,3 +139,15 @@ def test_sl_floor_rune_case():
     assert plan["sl_pct"] >= cfg.MIN_SL_PCT
     assert abs(plan["sl"] - (0.7844 - 0.0118)) < 1e-3  # max(1.5% = 0.0118, ATR 0.009)
     assert abs(plan["size"] * (plan["entry"] - plan["sl"]) - 20) < 1e-6
+
+
+def test_dotenv_txt_and_empty_env(tmp_path, monkeypatch):
+    from scanner.config import Config
+    monkeypatch.chdir(tmp_path)
+    for k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+        monkeypatch.delenv(k, raising=False)
+    (tmp_path / ".env").write_text("TELEGRAM_BOT_TOKEN=\nTELEGRAM_CHAT_ID=\n")
+    (tmp_path / ".env.txt").write_text("﻿TELEGRAM_BOT_TOKEN=111:abc\nTELEGRAM_CHAT_ID=5523\n", encoding="utf-8")
+    cfg = Config.load()
+    assert cfg.TELEGRAM_BOT_TOKEN == "111:abc" and cfg.TELEGRAM_CHAT_ID == "5523"
+    assert ".env.txt" in cfg.ENV_FILE

@@ -9,20 +9,37 @@ import os
 from dataclasses import dataclass, field, fields
 
 
-def load_dotenv(path: str = ".env") -> None:
-    """Minimal .env reader (KEY=value lines). Real environment variables win,
-    so Railway settings are never overridden by a stray local file."""
-    if not os.path.isfile(path):
-        return
-    with open(path, encoding="utf-8-sig") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, val = line.split("=", 1)
-            key, val = key.strip(), val.strip().strip('"').strip("'")
-            if key and val and key not in os.environ:
-                os.environ[key] = val
+def load_dotenv(path: str = ".env") -> str | None:
+    """Minimal .env reader (KEY=value lines). Real, non-empty environment
+    variables win, so Railway settings are never overridden by a local file.
+    Also accepts `.env.txt` (Windows Notepad often saves it that way) and looks
+    next to the project as well as in the current folder.
+    Returns the path that was loaded, or None."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidates = [path, path + ".txt", os.path.join(root, path), os.path.join(root, path + ".txt")]
+    found = []
+    for c in candidates:
+        ap = os.path.abspath(c)
+        if os.path.isfile(ap) and ap not in found:
+            found.append(ap)
+    loaded = []
+    for fpath in found:  # all of them: an empty .env must not hide a filled .env.txt
+        n = 0
+        with open(fpath, encoding="utf-8-sig") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key, val = key.strip(), val.strip().strip('"').strip("'")
+                if key and val and not os.environ.get(key):
+                    os.environ[key] = val
+                    n += 1
+        if n:
+            loaded.append(fpath)
+    if not found:
+        return None
+    return ", ".join(loaded) if loaded else f"{found[0]} (no values set)"
 
 
 def _env(name: str, default):
@@ -106,8 +123,8 @@ class Config:
 
     @classmethod
     def load(cls, env_file: str = ".env") -> "Config":
-        load_dotenv(env_file)
         cfg = cls()
+        cfg.ENV_FILE = load_dotenv(env_file)
         for f in fields(cls):
             setattr(cfg, f.name, _env(f.name, getattr(cfg, f.name)))
         if not cfg.TELEGRAM_STATUS_CHAT_ID:

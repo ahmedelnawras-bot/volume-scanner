@@ -4,6 +4,7 @@ cd /d "%~dp0"
 set PYTHONUTF8=1
 chcp 65001 >nul
 
+if exist ".env.txt" if not exist ".env" ren ".env.txt" ".env"
 if not exist ".env" (
     copy ".env.example" ".env" >nul
     echo Created .env - put your TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in it, then run start.bat again.
