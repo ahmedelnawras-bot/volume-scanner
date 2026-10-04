@@ -67,12 +67,14 @@ def test_early_breakout_like_night():
     assert sig.type == "EARLY_BREAKOUT", (sig.type, m)
     assert sig.side == "long"
     assert sig.score >= cfg.MIN_SCORE_TO_ALERT, sig.score_parts
-    assert any("shorts crowded" in n for n in sig.notes)
+    assert "funding_neg" in sig.notes
     assert sig.plan and sig.plan["sl"] < sig.price
     # risk sizing: size * (entry - sl) == risk
     assert abs(sig.plan["size"] * (sig.price - sig.plan["sl"]) - 20) < 1e-6
-    txt = format_signal(sig.to_dict())
-    assert "[EARLY_BREAKOUT] NIGHT-USDT-SWAP" in txt and "confirmed on both" in txt
+    txt = format_signal(sig.to_dict(), "en")
+    assert "Early breakout | NIGHT-USDT-SWAP" in txt and "confirmed on both" in txt
+    ar = format_signal(sig.to_dict(), "ar")
+    assert "اختراق مبكر" in ar and "ممنوع الشورت" in ar and "مؤكدة على المنصتين" in ar
 
 
 def test_matrix_types():
@@ -115,8 +117,9 @@ def test_followup_and_summary():
     assert f4["hit_r1"] and f4["result_4h"] > 0
     sig["followup"] = {"4h": f4, "24h": evaluate(sig, after, 24)}
     assert is_win(sig) is True
-    txt = daily_summary([sig], [sig])
-    assert "EARLY_BREAKOUT" in txt and "Win rate" in txt
+    txt = daily_summary([sig], [sig], "en")
+    assert "Early breakout" in txt and "Win rate" in txt
+    assert "نسبة النجاح" in daily_summary([sig], [sig], "ar")
 
 
 def test_state_cooldown_memory():

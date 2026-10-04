@@ -119,6 +119,7 @@ class Config:
     TELEGRAM_STATUS_CHAT_ID: str = ""   # heartbeat / errors (defaults to TELEGRAM_CHAT_ID)
     REDIS_URL: str = ""                 # empty -> in-memory state (local testing)
     DRY_RUN: bool = False               # print alerts instead of sending
+    ALERT_LANG: str = "ar"              # ar | en
     LOG_LEVEL: str = "INFO"
 
     @classmethod

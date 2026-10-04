@@ -12,7 +12,8 @@ from .exchanges import REGISTRY, GeoBlocked, RateLimited
 from .followup import daily_summary, evaluate
 from .models import Contract, Snapshot
 from .state import State
-from .telegram import Telegram, format_early, format_signal
+from . import messages as msg
+from .telegram import Telegram
 
 log = logging.getLogger(__name__)
 H = 3_600_000
@@ -116,11 +117,14 @@ class Scanner:
             try:
                 per_ex[name] = await self.scan_exchange(name, now_ms)
             except GeoBlocked as e:
-                await self.tg.error(f"451:{name}", f"{e}. Move the Railway service to an EU/Asia region.")
+                await self.tg.error(f"451:{name}", self._t(
+                    f"{name.upper()} حاجبة المنطقة (HTTP 451). انقل السيرفر لـ region في أوروبا أو آسيا.",
+                    f"{e}. Move the Railway service to an EU/Asia region."))
                 per_ex[name] = []
             except Exception as e:
                 log.exception("scan failed on %s", name)
-                await self.tg.error(f"scan:{name}", f"{name.upper()} not responding: {e}")
+                await self.tg.error(f"scan:{name}", self._t(f"{name.upper()} مش بترد: {e}",
+                                                           f"{name.upper()} not responding: {e}"))
                 per_ex[name] = []
 
         await asyncio.gather(*[run(n) for n in self.ex])
@@ -131,7 +135,8 @@ class Scanner:
         self.last_stats["at"] = now_ms
         await self.state.set_flag("last_scan", self.last_stats)
         if took > self.cfg.SCAN_SLOW_SECONDS:
-            await self.tg.error("slow", f"Scan took {took:.0f}s (limit {self.cfg.SCAN_SLOW_SECONDS}s)")
+            await self.tg.error("slow", self._t(f"الـ scan خد {took:.0f} ثانية (الحد {self.cfg.SCAN_SLOW_SECONDS})",
+                                                f"Scan took {took:.0f}s (limit {self.cfg.SCAN_SLOW_SECONDS}s)"))
         log.info("hourly scan done in %.1fs, %d alerts", took, len(sent))
         return sent
 
@@ -151,7 +156,7 @@ class Scanner:
                 continue
             if await self.state.in_cooldown(key, sig["type"], self.cfg.COOLDOWN_HOURS):
                 continue
-            await self.tg.signal(format_signal(sig, self.cfg.TIMEZONE))
+            await self.tg.signal(msg.format_signal(sig, self.cfg.ALERT_LANG, self.cfg.TIMEZONE))
             await self.state.mark_alert(key, sig["type"], self.cfg.COOLDOWN_HOURS)
             await self.state.save_signal(sig)
             sent.append(sig)
@@ -169,7 +174,8 @@ class Scanner:
                 rows = await asyncio.gather(*[self._safe(ex.candles(c, "15m", self.cfg.CANDLES_15M, now_ms=now_ms), [])
                                               for c in eligible])
             except Exception as e:
-                await self.tg.error(f"light:{name}", f"15m scan failed on {name.upper()}: {e}")
+                await self.tg.error(f"light:{name}", self._t(f"مسح الـ 15m فشل على {name.upper()}: {e}",
+                                                             f"15m scan failed on {name.upper()}: {e}"))
                 continue
             for c, candles in zip(eligible, rows):
                 hit = candles and analysis.quick_spike(candles, self.cfg, "15m")
@@ -177,7 +183,7 @@ class Scanner:
                     continue
                 if await self.state.in_cooldown(f"{c.key}:15m", "EARLY_15M", self.cfg.COOLDOWN_HOURS):
                     continue
-                await self.tg.signal(format_early(c.key, c.symbol, name, hit[0], hit[1], candles[-1].close))
+                await self.tg.signal(msg.early(c.symbol, name, hit[0], hit[1], candles[-1].close, self.cfg.ALERT_LANG))
                 await self.state.mark_alert(f"{c.key}:15m", "EARLY_15M", self.cfg.COOLDOWN_HOURS)
                 n += 1
         return n
@@ -212,17 +218,14 @@ class Scanner:
         now_ms = int(time.time() * 1000)
         last24 = await self.state.signals_between(now_ms - 24 * H, now_ms)
         last7 = await self.state.signals_between(now_ms - 7 * 24 * H, now_ms)
-        await self.tg.status(daily_summary(last24, last7))
+        await self.tg.status(daily_summary(last24, last7, self.cfg.ALERT_LANG))
 
     async def heartbeat(self):
         st = await self.state.get_flag("last_scan") or {}
-        parts = []
-        for name in self.ex:
-            s = st.get(name, {})
-            parts.append(f"{name.upper()}: {s.get('eligible', 0)}/{s.get('contracts', 0)} scanned, "
-                         f"{s.get('spikes', 0)} spikes")
-        took = st.get("took_s", "n/a")
-        await self.tg.status("💓 <b>Heartbeat</b>\n" + "\n".join(parts) + f"\nLast scan: {took}s")
+        await self.tg.status(msg.heartbeat(st, list(self.ex), self.cfg.ALERT_LANG))
+
+    def _t(self, ar: str, en: str) -> str:
+        return ar if self.cfg.ALERT_LANG == "ar" else en
 
 
 async def _const(v):

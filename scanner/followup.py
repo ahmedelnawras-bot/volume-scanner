@@ -69,14 +69,21 @@ def is_win(sig: dict) -> Optional[bool]:
     return res * direction(sig) > 0
 
 
-def daily_summary(last_24h: list[dict], last_7d: list[dict]) -> str:
-    lines = ["📊 <b>Volume Scanner — daily summary</b>", ""]
+def daily_summary(last_24h: list[dict], last_7d: list[dict], lang: str = "ar") -> str:
+    from .messages import TYPES, ltr
+    ar = lang == "ar"
+
+    def tname(t):
+        e, n = TYPES[lang].get(t, ("", t))
+        return f"{e} {n}".strip()
+
+    lines = ["📊 <b>ملخص الـ Volume Scanner اليومي</b>" if ar else "📊 <b>Volume Scanner — daily summary</b>", ""]
     if not last_24h:
-        lines.append("No signals in the last 24h.")
+        lines.append("مفيش إشارات في آخر 24 ساعة." if ar else "No signals in the last 24h.")
     else:
         by_type = Counter(s["type"] for s in last_24h)
-        lines.append(f"Signals (24h): {len(last_24h)}")
-        lines += [f"  {t}: {n}" for t, n in by_type.most_common()]
+        lines.append(f"عدد الإشارات (24 ساعة): {len(last_24h)}" if ar else f"Signals (24h): {len(last_24h)}")
+        lines += [f"  {tname(t)}: {n}" for t, n in by_type.most_common()]
 
         def perf(s):
             fu = s.get("followup") or {}
@@ -87,10 +94,10 @@ def daily_summary(last_24h: list[dict], last_7d: list[dict]) -> str:
         scored = [(perf(s), s) for s in last_24h if perf(s) is not None]
         scored.sort(key=lambda x: x[0], reverse=True)
         if scored:
-            lines += ["", "Best:"]
-            lines += [f"  {s['key']} {s['type']} {p:+.1f}%" for p, s in scored[:3]]
-            lines += ["Worst:"]
-            lines += [f"  {s['key']} {s['type']} {p:+.1f}%" for p, s in scored[-3:][::-1]]
+            lines += ["", "🏆 أحسن 3:" if ar else "Best:"]
+            lines += [f"  {s['key']} · {tname(s['type'])} · {ltr(f'{p:+.1f}%')}" for p, s in scored[:3]]
+            lines += ["📉 أسوأ 3:" if ar else "Worst:"]
+            lines += [f"  {s['key']} · {tname(s['type'])} · {ltr(f'{p:+.1f}%')}" for p, s in scored[-3:][::-1]]
 
     stats = defaultdict(lambda: [0, 0])
     for s in last_7d:
@@ -100,7 +107,7 @@ def daily_summary(last_24h: list[dict], last_7d: list[dict]) -> str:
         stats[s["type"]][1] += 1
         stats[s["type"]][0] += int(w)
     if stats:
-        lines += ["", "Win rate (7d):"]
+        lines += ["", "✅ نسبة النجاح (آخر 7 أيام):" if ar else "Win rate (7d):"]
         for t, (w, n) in sorted(stats.items(), key=lambda x: -x[1][1]):
-            lines.append(f"  {t}: {w}/{n} ({w / n * 100:.0f}%)")
+            lines.append(f"  {tname(t)}: {w}/{n} ({ltr(f'{w / n * 100:.0f}%')})")
     return "\n".join(lines)

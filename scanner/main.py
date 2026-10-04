@@ -18,6 +18,7 @@ import aiohttp
 from .config import Config
 from .engine import Scanner
 from .state import State
+from . import messages
 from .telegram import Telegram
 
 log = logging.getLogger("scanner")
@@ -27,15 +28,14 @@ async def build(cfg: Config):
     session = aiohttp.ClientSession(headers={"User-Agent": "volume-scanner/1.0"})
     state = await State.connect(cfg.REDIS_URL)
     tg = Telegram(session, cfg.TELEGRAM_BOT_TOKEN, cfg.TELEGRAM_CHAT_ID,
-                  cfg.TELEGRAM_STATUS_CHAT_ID, cfg.DRY_RUN)
+                  cfg.TELEGRAM_STATUS_CHAT_ID, cfg.DRY_RUN, cfg.ALERT_LANG)
     return session, state, tg, Scanner(cfg, session, state, tg)
 
 
 async def run_forever(cfg: Config):
     session, state, tg, sc = await build(cfg)
     tz = ZoneInfo(cfg.TIMEZONE)
-    await tg.status(f"🟢 Volume Scanner started ({', '.join(e.upper() for e in sc.ex)}), "
-                    f"state: {'memory' if state.is_memory else 'redis'}")
+    await tg.status(messages.started(list(sc.ex), state.is_memory, cfg.ALERT_LANG))
     # scan once at boot so the universe and the light scan are ready
     await _guard(tg, "boot", sc.hourly_scan())
     last_hour = last_light = None
@@ -76,7 +76,7 @@ async def _guard(tg: Telegram, name: str, coro):
         return await coro
     except Exception as e:
         log.exception("%s job failed", name)
-        await tg.error(f"job:{name}", f"{name} job failed: {e}")
+        await tg.error(f"job:{name}", f"{name} job failed / فشل: {e}")
 
 
 async def run_once(cfg: Config, light: bool = False):

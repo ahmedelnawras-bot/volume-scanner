@@ -78,7 +78,7 @@ def compute_metrics(s: Snapshot, cfg: Config) -> Optional[dict]:
 
 
 def classify(m: dict, cfg: Config) -> tuple[str, str, list]:
-    """Returns (signal_type, side, notes)."""
+    """Returns (signal_type, side, notes). Notes are codes; telegram.py renders them."""
     up = m["price_chg_pct"] > 0
     oi = m["oi_chg_1h_pct"]
     oi_up = oi is not None and oi > cfg.OI_FLAT_PCT
@@ -86,7 +86,7 @@ def classify(m: dict, cfg: Config) -> tuple[str, str, list]:
     fund = m["funding"]
     notes: list[str] = []
     if oi is None:
-        notes.append("OI data unavailable")
+        notes.append("oi_na")
 
     if up:
         pct_b = m["pct_b_4h"]
@@ -96,10 +96,10 @@ def classify(m: dict, cfg: Config) -> tuple[str, str, list]:
                 or (pct_b is not None and pct_b > cfg.LATE_PUMP_PCT_B
                     and m["from_7d_low_pct"] >= cfg.EARLY_MAX_FROM_LOW_PCT))
         if late:
-            notes.append("late move: do not chase the long")
+            notes.append("late")
             return "LATE_PUMP", "none", notes
         if oi_down:
-            notes.append("shorts closing, move likely short-lived")
+            notes.append("short_squeeze")
             return "SHORT_SQUEEZE", "none", notes
         squeezy = oi_up and fund is not None and fund < cfg.SQUEEZE_FUNDING_MAX
         if m["base_breakout"] and m["from_7d_low_pct"] < cfg.EARLY_MAX_FROM_LOW_PCT and oi_up:
@@ -107,19 +107,19 @@ def classify(m: dict, cfg: Config) -> tuple[str, str, list]:
         elif m["trend_4h"] == "up":
             t = "CONTINUATION"
         elif squeezy:
-            notes.append("funding negative + OI rising: shorts crowded, do not short")
+            notes.append("squeeze_risk")
             return "SQUEEZE_RISK", "none", notes
         else:
             t = "VOLUME_SPIKE"
         if squeezy:
-            notes.append("funding negative: shorts crowded, do not short")
+            notes.append("funding_neg")
         return t, "long", notes
 
     # price down
     if oi_up:
         return "NEW_SHORTS", "short", notes
     if oi_down:
-        notes.append("liquidation flush, a bounce often follows")
+        notes.append("liq_flush")
         return "LONG_LIQUIDATION", "none", notes
     return "VOLUME_SPIKE", "short", notes
 
@@ -217,7 +217,7 @@ def build_signal(s: Snapshot, m: dict, cfg: Config, exchanges: list, timeframe: 
     sc, parts = score(m, t, cfg, confirmed)
     tr = m.get("trend_4h")
     if (side == "short" and tr == "up") or (side == "long" and tr == "down"):
-        notes.append(f"counter-trend: 4h trend is {tr}, treat as a pullback trade")
+        notes.insert(0, f"counter_trend:{tr}")
     plan = make_plan(m, side, cfg)
     if plan:
         # price at new highs/lows has no swing level ahead: project targets at 1.5R / 3R
@@ -227,11 +227,11 @@ def build_signal(s: Snapshot, m: dict, cfg: Config, exchanges: list, timeframe: 
         if lv.get(k1) is None:
             lv[k1] = plan["entry"] + sgn * 1.5 * dist
             lv[k2] = plan["entry"] + sgn * 3.0 * dist
-            notes.append(f"no {k1.upper()} {'above' if side == 'long' else 'below'} price yet: {k1.upper()}/{k2.upper()} projected at 1.5R/3R")
+            notes.append(f"projected:{side}")
         elif lv.get(k2) is None:
             lv[k2] = plan["entry"] + sgn * 3.0 * dist
     if plan and plan["wide_sl"]:
-        notes.append(f"SL is wide ({plan['sl_pct']}%), size reduced accordingly")
+        notes.append(f"wide_sl:{plan['sl_pct']}")
     close_iso = datetime.fromtimestamp(m["candle_close_ms"] / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
     metrics = {k: (round(v, 6) if isinstance(v, float) else v) for k, v in m.items()
                if k not in ("levels", "price", "candle_close_ms")}

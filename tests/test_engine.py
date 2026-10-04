@@ -82,7 +82,7 @@ def test_hourly_scan_end_to_end(monkeypatch):
         assert sig["key"] == "NIGHT" and sig["exchanges"] == ["binance", "okx"]
         assert sig["score_parts"]["cross_exchange"] == 15
         assert sc.last_stats["okx"]["eligible"] == 2  # TINY filtered by liquidity
-        assert "[" in tg.signals[0] and "NIGHT" in tg.signals[0]
+        assert "اختراق مبكر" in tg.signals[0] and "NIGHT" in tg.signals[0]
         # second scan in the same hour: cooldown blocks the repeat
         assert await sc.hourly_scan() == []
         await sc.followups()

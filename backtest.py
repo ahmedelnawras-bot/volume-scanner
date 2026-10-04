@@ -24,7 +24,7 @@ from scanner.config import Config
 from scanner.exchanges import REGISTRY
 from scanner.followup import evaluate
 from scanner.models import Snapshot
-from scanner.telegram import format_signal
+from scanner.messages import format_signal
 
 H = 3_600_000
 
@@ -165,7 +165,7 @@ async def main():
               f"{(f'{oi:+.0f}%' if oi is not None else 'n/a'):>6s} "
               f"{(f'{f4:+.1f}%' if f4 is not None else '-'):>7s} {(f'{f24:+.1f}%' if f24 is not None else '-'):>7s}  {flag}")
         if a.show_alerts and flag == "YES":
-            print(format_signal(r) + "\n")
+            print(format_signal(r, cfg.ALERT_LANG) + "\n")
 
     alerts = [r for r in results if r["would_alert"] and not r["cooldown_blocked"]]
     print(f"\n{len(results)} spike hour(s), {len(alerts)} alert(s).")
