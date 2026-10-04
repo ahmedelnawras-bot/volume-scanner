@@ -25,6 +25,7 @@ class FakeEx:
     def __init__(self, name):
         self.name = name
         self.request_count = 0
+        self.rate_limited = 0
         self.now = int(time.time() * 1000)
 
     async def contracts(self):
@@ -88,3 +89,18 @@ def test_hourly_scan_end_to_end(monkeypatch):
         print("\n" + tg.signals[0])
 
     asyncio.run(run())
+
+
+def test_pacer_spacing():
+    from scanner.exchanges.base import Pacer
+
+    async def run():
+        p = Pacer(10, 1.0)  # 10/s -> 0.1s apart
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        for _ in range(6):
+            await p.wait()
+        return loop.time() - t0
+
+    took = asyncio.run(run())
+    assert 0.45 <= took < 0.8, took

@@ -13,6 +13,10 @@ TF_MS = {"15m": 900_000, "1h": 3_600_000, "4h": 14_400_000}
 class Binance(BaseExchange):
     name = "binance"
     base_url = "https://fapi.binance.com"
+    RATE_LIMITS = [
+        ("/futures/data/", 3, 1.0),   # 1000 / 5min per IP
+        ("", 15, 1.0),                # 2400 weight / min, klines weigh 2
+    ]
 
     async def contracts(self) -> list[Contract]:
         info = await self._get("/fapi/v1/exchangeInfo")

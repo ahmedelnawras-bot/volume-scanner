@@ -44,8 +44,11 @@ class Scanner:
     async def _safe(self, coro, default=None):
         try:
             return await coro
-        except (GeoBlocked, RateLimited):
+        except GeoBlocked:
             raise
+        except RateLimited as e:
+            log.info("gave up after rate limits: %s", e)
+            return default
         except Exception as e:
             log.debug("call failed: %s", e)
             return default
@@ -97,7 +100,11 @@ class Scanner:
 
         results = await asyncio.gather(*[enrich(c, k) for c, k in candidates])
         self.last_stats[name] = {"contracts": len(contracts), "eligible": len(eligible),
-                                 "spikes": len(candidates), "requests": ex.request_count}
+                                 "spikes": len(candidates), "requests": ex.request_count,
+                                 "rate_limited": ex.rate_limited}
+        if ex.rate_limited:
+            log.info("%s: %d rate-limit retries this scan", name, ex.rate_limited)
+        ex.rate_limited = 0
         return [r for r in results if r]
 
     async def hourly_scan(self) -> list[dict]:

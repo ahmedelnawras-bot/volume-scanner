@@ -13,6 +13,13 @@ TF_MS = {"15m": 900_000, "1h": 3_600_000, "4h": 14_400_000}
 class OKX(BaseExchange):
     name = "okx"
     base_url = "https://www.okx.com"
+    RATE_LIMITS = [
+        ("/api/v5/rubik/", 2, 1.0),              # 5 / 2s
+        ("/api/v5/market/history-candles", 8, 1.0),  # 20 / 2s
+        ("/api/v5/market/candles", 16, 1.0),     # 40 / 2s
+        ("/api/v5/public/funding-rate", 8, 1.0), # 20 / 2s
+        ("", 8, 1.0),
+    ]
 
     def _unwrap(self, data, path):
         code = str(data.get("code", "0"))
