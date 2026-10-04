@@ -4,7 +4,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-LRM = "‎"  # keeps "+6.8%" / "-0.010%" from flipping inside Arabic (RTL) lines
+LRM = "\u200e"  # keeps "+6.8%" / "-0.010%" from flipping inside Arabic (RTL) lines
+RLM = "\u200f"  # forces a line to lay out right-to-left
 
 
 def ltr(s) -> str:

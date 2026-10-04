@@ -75,37 +75,30 @@ def signal(sig: dict, lang: str = "ar", tz_name: str = "Africa/Cairo") -> str:
         entry = plan["entry"]
         long_ = plan["side"] == "long"
         tp1, tp2 = (lv.get("r1"), lv.get("r2")) if long_ else (lv.get("s1"), lv.get("s2"))
-        projected = any(n.startswith("projected") for n in notes)
-        tp = f"{t['tp']}1: {fmt.price(tp1)} ({_rel(tp1, entry)})"
+        proj = t["projected"] if any(n.startswith("projected") for n in notes) else ""
+        pl = t["plan_lines"]
+        out += ["", t["plan_h"],
+                pl["entry"].format(entry=fmt.price(entry)),
+                pl["sl"].format(sl=fmt.price(plan["sl"]), sl_pct=_rel(plan["sl"], entry))]
+        if tp1:
+            out.append(pl["tp1"].format(tp1=fmt.price(tp1), tp1_pct=_rel(tp1, entry), proj=proj))
         if tp2:
-            tp += f" · TP2: {fmt.price(tp2)} ({_rel(tp2, entry)})"
-        if projected:
-            tp += f" {t['projected']}"
-        out += [
-            "",
-            t["plan_h"],
-            f"{t['entry']}: {fmt.price(entry)}",
-            f"{t['sl']}: {fmt.price(plan['sl'])} ({_rel(plan['sl'], entry)})",
-            tp,
-            f"{t['size']}: " + t["size_txt"].format(
-                qty=fmt.qty(plan["size"]), coin=html.escape(sig["key"]),
-                notional=fmt.usd(plan["notional_usd"]), risk=fmt.usd(plan["risk_usd"])),
-        ]
+            out.append(pl["tp2"].format(tp2=fmt.price(tp2), tp2_pct=_rel(tp2, entry), proj=proj))
+        out.append(pl["size"].format(qty=fmt.qty(plan["size"]), coin=html.escape(sig["key"]),
+                                     notional=fmt.usd(plan["notional_usd"]), risk=fmt.usd(plan["risk_usd"])))
 
-    vol = t["vol"].format(rvol=fmt.mult(m.get("rvol_1h")))
-    if m.get("rvol_4h"):
-        vol += " · " + t["vol4h"].format(rvol=fmt.mult(m.get("rvol_4h")))
     pb = m.get("pct_b_4h")
-    out += [
-        "",
-        t["read_h"],
-        f"• {vol}",
-        "• " + t["move"].format(chg=fmt.pct(m.get("price_chg_pct"))),
-        "• " + t["flow"].format(oi=fmt.pct(m.get("oi_chg_1h_pct"), 0), funding=fmt.funding(m.get("funding")),
-                                taker=fmt.ratio(m.get("taker_buy_ratio"))),
-        "• " + t["ctx"].format(ma=_ma(m, t), pctb=fmt.ltr(f"{pb:.2f}") if pb is not None else "n/a",
-                               from_low=fmt.pct(m.get("from_7d_low_pct"), 0)),
-    ]
+    values = {
+        "rvol": fmt.mult(m.get("rvol_1h")),
+        "chg": fmt.pct(m.get("price_chg_pct")),
+        "oi": fmt.pct(m.get("oi_chg_1h_pct"), 0),
+        "funding": fmt.funding(m.get("funding")),
+        "taker": fmt.ratio(m.get("taker_buy_ratio")),
+        "ma": _ma(m, t),
+        "pctb": fmt.ltr(f"{pb:.2f}") if pb is not None else "n/a",
+        "from_low": fmt.pct(m.get("from_7d_low_pct"), 0),
+    }
+    out += ["", t["read_h"]] + [line.format(**values) for line in t["read_lines"]]
 
     if not plan:
         out += [
@@ -118,21 +111,33 @@ def signal(sig: dict, lang: str = "ar", tz_name: str = "Africa/Cairo") -> str:
     rest = [n for n in notes if not n.startswith("counter_trend")]
     if rest:
         out += ["", t["notes_h"]] + [f"• {_note(n, t)}" for n in rest]
-    return "\n".join(out)
+    return _join(out, lang)
+
+
+def _join(lines: list, lang: str, keep_first_ltr: bool = True) -> str:
+    """Arabic: mark every line after the headline right-to-left (RLM), so lines
+    that start with an emoji, a number or an English term still align right.
+    The headline keeps its natural left-to-right order: LONG/SHORT reads first."""
+    if lang != "ar":
+        return "\n".join(lines)
+    head, rest = (lines[:1], lines[1:]) if keep_first_ltr else ([], lines)
+    return "\n".join(head + [fmt.RLM + ln if ln else ln for ln in rest])
 
 
 def early(symbol: str, exchange: str, rvol: float, chg: float, px: float, lang: str = "ar") -> str:
     t = T(lang)
     side = "WATCH_long" if chg >= 0 else "WATCH_short"
-    return (f"<b>{t['action'][side]} | {html.escape(symbol)}</b>\n"
-            f"{t['type']['EARLY_15M']} · {exchange.upper()}\n"
-            + t["early_body"].format(rvol=fmt.mult(rvol), chg=fmt.pct(chg), price=fmt.price(px)))
+    lines = [f"<b>{t['action'][side]} | {html.escape(symbol)}</b>",
+             f"{t['type']['EARLY_15M']} · {exchange.upper()}",
+             *t["early_body"].format(rvol=fmt.mult(rvol), chg=fmt.pct(chg), price=fmt.price(px)).split("\n")]
+    return _join(lines, lang)
 
 
 def started(exchanges: list, memory: bool, lang: str = "ar") -> str:
     t = T(lang)
-    return t["started"].format(exs=" + ".join(e.upper() for e in exchanges),
+    text = t["started"].format(exs=" + ".join(e.upper() for e in exchanges),
                                state=t["state_memory"] if memory else t["state_redis"])
+    return _join(text.split("\n"), lang, keep_first_ltr=False)
 
 
 def heartbeat(stats: dict, exchanges: list, lang: str = "ar") -> str:
@@ -141,11 +146,12 @@ def heartbeat(stats: dict, exchanges: list, lang: str = "ar") -> str:
                                contracts=stats.get(n, {}).get("contracts", 0),
                                spikes=stats.get(n, {}).get("spikes", 0)) for n in exchanges]
     took = stats.get("took_s")
-    return "\n".join([t["hb_h"], *rows, t["hb_took"].format(took=fmt.ltr(f"{took}s") if took else "n/a")])
+    return _join([t["hb_h"], *rows, t["hb_took"].format(took=fmt.ltr(f"{took}s") if took else "n/a")],
+                 lang, keep_first_ltr=False)
 
 
 def error(text: str, lang: str = "ar") -> str:
-    return f"{T(lang)['err_h']}\n{html.escape(text)}"
+    return _join([T(lang)["err_h"], html.escape(text)], lang, keep_first_ltr=False)
 
 
 def daily_summary(data: dict, lang: str = "ar") -> str:
@@ -160,11 +166,12 @@ def daily_summary(data: dict, lang: str = "ar") -> str:
         out.append(t["sum_none"])
     else:
         out.append(t["sum_count"].format(n=data["count"]))
-        out += [f"  {tn(k)}: {n}" for k, n in data["by_type"]]
+        out += [f"• {tn(k)}: {n}" for k, n in data["by_type"]]
         if data["best"]:
-            out += ["", t["sum_best"]] + [f"  {k} · {tn(ty)} · {fmt.pct(p)}" for k, ty, p in data["best"]]
-            out += [t["sum_worst"]] + [f"  {k} · {tn(ty)} · {fmt.pct(p)}" for k, ty, p in data["worst"]]
+            out += ["", t["sum_best"]] + [f"• {tn(ty)}: {k} {fmt.pct(p)}" for k, ty, p in data["best"]]
+            out += [t["sum_worst"]] + [f"• {tn(ty)}: {k} {fmt.pct(p)}" for k, ty, p in data["worst"]]
     if data["win_rate"]:
         out += ["", t["sum_win"]]
-        out += [f"  {tn(ty)}: {w}/{n} ({fmt.pct(w / n * 100, 0, sign=False)})" for ty, w, n in data["win_rate"]]
-    return "\n".join(out)
+        out += [f"• {tn(ty)}: {fmt.ltr(f'{w}/{n}')} ({fmt.pct(w / n * 100, 0, sign=False)})"
+                for ty, w, n in data["win_rate"]]
+    return _join(out, lang, keep_first_ltr=False)
