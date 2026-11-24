@@ -103,7 +103,7 @@ TXT = {
     "bal_coin": "• {coin}: {qty} | القيمة التقريبية: {amount}",
     "bal_empty": "• لا يوجد رصيد في الحساب الفرعي",
     "bal_ok": "✔️ رصيد USDT يكفي لإكمال الخطة. المبلغ المطلوب: {amount}",
-    "bal_short": "⚠️ رصيد USDT أقل من المطلوب لإكمال الخطة. الرصيد: {have} | المطلوب: {need} | المبلغ الناقص: {gap} USDT",
+    "bal_short": "⚠️ رصيد USDT أقل من المطلوب لإكمال الخطة | الرصيد: {have} | المطلوب: {need} | المبلغ الناقص: {gap} USDT",
     "bal_paper": "🏦 رصيد الحساب غير متاح في الوضع التجريبي لأن مفتاح OKX غير مربوط",
     "bal_paper_need": "المطلوب لإكمال الخطة: {amount} USDT",
     "bal_error": "🏦 تعذّر جلب رصيد الحساب من OKX الآن",
@@ -223,6 +223,14 @@ def item(line, split=False):
     first = lead + B(head_txt) if head_txt else lead
     rest = " | ".join(parts[1:])
     return first + ("\n" + RLM + "      " + rest if split else " | " + rest)
+
+
+def item_lines(line):
+    """'head | a | b' -> head on its own line, then each part on its own indented line."""
+    parts = line.split(" | ")
+    if len(parts) == 1:
+        return line
+    return parts[0] + "".join("\n" + RLM + "      " + x for x in parts[1:])
 
 
 def coin_block(line, pnl):
@@ -633,7 +641,7 @@ class Bot:
         else:
             out.append(B(T("pf_empty")))
         bal = self.balance_lines()
-        out += ["", B(bal[0]), quote([item(x) for x in bal[1:]])]
+        out += ["", B(bal[0]), quote([item_lines(x) for x in bal[1:]])]
         out += ["", quote([T("rules", pct=pct(100 * self.max_pump, False))], expandable=True)]
         if st.d.get("paused"):
             out.append(B(T("paused")))
@@ -643,7 +651,7 @@ class Bot:
     def btc_line(self, btc):
         """Price line that stands out: bold, price in a code box, 24h change with a green/red dot."""
         p = money(btc)
-        line = B(T("btc_now", price=p)).replace(iso(p), "<code>" + iso(p) + "</code>")
+        line = B(T("btc_now", price=p)).replace(iso(p), "<u>" + iso(p) + "</u>")   # bold + underlined price
         try:
             chg = 100 * self.ex.ticker("BTC-USDT")[2]
             line += "\n" + T("btc_24h", dot="🟢" if chg >= 0 else "🔴", pct=pct(chg))
