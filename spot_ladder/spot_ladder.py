@@ -31,7 +31,7 @@ Settings (environment variables, or KEY=VALUE lines in extra.env / .env next to 
                                Live only. At start the bot checks the key: main account or withdraw -> it refuses.
   LADDER_SUBACCOUNT=spoot      name shown in messages
   LADDER_TELEGRAM_BOT_TOKEN / LADDER_TELEGRAM_CHAT_ID its own Telegram bot (falls back to TELEGRAM_BOT_TOKEN /
-                               TELEGRAM_CHAT_ID); reports + /status /stop /resume
+                               TELEGRAM_CHAT_ID); reports, buttons, summaries at 08:00 and 20:00 Cairo
   REDIS_URL (or LADDER_REDIS_URL)  on Railway: keep the state in Redis so restarts/redeploys lose nothing
   LADDER_BUDGET=2590  LADDER_ARM=55000  LADDER_DISARM=65000  LADDER_MAX_PUMP=0.10  LADDER_MAX_SLIPPAGE=0.005
   LADDER_STATE                 default ladder_state.json (live) / ladder_state_paper.json (paper)
@@ -76,13 +76,17 @@ def load_env():
                 os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-def cairo_now():                 # uses iso(), defined below; only called at run time
+def cairo_dt():
     try:
         from zoneinfo import ZoneInfo
-        t = datetime.now(ZoneInfo("Africa/Cairo"))
+        return datetime.now(ZoneInfo("Africa/Cairo"))
     except Exception:
         from datetime import timedelta
-        t = datetime.now(timezone.utc) + timedelta(hours=2)
+        return datetime.now(timezone.utc) + timedelta(hours=2)
+
+
+def cairo_now():                 # uses iso(), defined below; only called at run time
+    t = cairo_dt()
     return iso(t.strftime("%Y-%m-%d %H:%M")) + " بتوقيت القاهرة"
 
 
@@ -713,7 +717,13 @@ def main():
         log("OKX " + os.environ.get("LADDER_SUBACCOUNT", "spoot") + ": " + acct)
         head += f"\n{RLM}🔐 تم التحقق من الحساب الفرعي {iso(os.environ.get('LADDER_SUBACCOUNT', 'spoot'))}، والمفتاح بلا صلاحية سحب"
     tg.send(bot.summary(ex.ticker("BTC-USDT")[0], head))
-    last_daily = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # scheduled summaries, Cairo time; what was already sent is kept in the state (survives restarts)
+    SCHEDULE = [(8, "morning", "☀️ الملخص الصباحي - سلم السبوت"), (20, "evening", "🌙 الملخص المسائي - سلم السبوت")]
+    sent = st.d.setdefault("summaries_sent", {})
+    t0 = cairo_dt()
+    for hour, key, _ in SCHEDULE:            # don't fire a summary for a slot that already passed before start
+        if t0.hour >= hour:
+            sent.setdefault(key, t0.strftime("%Y-%m-%d"))
     def handle_commands():
         for cmd in tg.commands():
             if cmd == "/stop":
@@ -731,10 +741,13 @@ def main():
             handle_commands()
             btc = ex.ticker("BTC-USDT")[0]
             bot.tick(btc)
-            day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            if datetime.now(timezone.utc).hour >= 6 and last_daily != day:      # ~08:00 Cairo
-                last_daily = day
-                tg.send(bot.summary(btc, "☀️ الملخص الصباحي - سلم السبوت"))
+            t = cairo_dt()
+            day = t.strftime("%Y-%m-%d")
+            for hour, key, title in SCHEDULE:
+                if t.hour >= hour and sent.get(key) != day:
+                    sent[key] = day
+                    st.save()
+                    tg.send(bot.summary(btc, title))
         except Exception as e:
             log(f"error: {e}")
             bot.once_alert("last_err", f"{RLM}⚠️ خطأ في البوت: {iso(str(e)[:200])}")
