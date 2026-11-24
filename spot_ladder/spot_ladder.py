@@ -76,7 +76,8 @@ TXT = {
     "t_account_ok": "🔐 تم التحقق من الحساب الفرعي {account}. مفتاح الربط لا يتيح السحب.",
     "mode_live": "🟢 الوضع الفعلي — ينفّذ البوت أوامر شراء حقيقية على OKX",
     "mode_paper": "🧪 الوضع التجريبي — يحاكي البوت الشراء دون تنفيذ صفقات حقيقية",
-    "btc_now": "₿ سعر BTC الآن: {price}",
+    "btc_now": "🟠 سعر BTC الآن: {price}",
+    "btc_24h": "{dot} التغيّر خلال آخر ٢٤ ساعة: {pct}",
     "orders_open": "📌 أوامر شراء BTC مفتوحة وتنتظر وصول السعر إلى مستويات الشراء",
     "cancel_above": "↩️ يلغي البوت الأوامر المفتوحة إذا ارتفع BTC فوق {disarm} (الفارق عن السعر الحالي: {pct})",
     "arm_at": "🎯 يضع البوت أوامر شراء BTC عند وصول السعر إلى {arm} (الفارق عن السعر الحالي: {pct})",
@@ -177,7 +178,7 @@ KEYBOARD = {"keyboard": [[{"text": BTN_STATUS}], [{"text": BTN_STOP}, {"text": B
             "resize_keyboard": True, "is_persistent": True}
 BUTTONS = {BTN_STATUS: "/status", BTN_STOP: "/stop", BTN_RESUME: "/resume",
            "📊 الملخص": "/status"}               # old button label, in case Telegram still shows it
-RAW_KEYS = {"icon", "state", "reason"}          # values that are Arabic text, not numbers/Latin
+RAW_KEYS = {"icon", "state", "reason", "dot"}          # values that are Arabic text, not numbers/Latin
 _LATIN = re.compile(r"(?<![{A-Za-z0-9_])(BTC|USDT|OKX|ETH|\d+%)(?![A-Za-z0-9_}])")
 
 
@@ -587,7 +588,7 @@ class Bot:
             nxt = [lv for lv, _ in LEVELS if not st.lv(lv)["btc"].startswith("filled")]
             if nxt:
                 q.append(T("next_level", level=money(nxt[0]), pct=pct(100 * (nxt[0] / btc - 1))))
-            out += ["", B(T("btc_now", price=money(btc))), quote(q)]
+            out += ["", self.btc_line(btc), quote(q)]
         frac = spent / self.budget if self.budget else 0
         out += ["", B(T("budget", amount=money(self.budget))),
                 quote([T("spent", amount=money(spent), pct=pct(100 * frac, False)),
@@ -638,6 +639,17 @@ class Bot:
             out.append(B(T("paused")))
         out.append(I(T("updated", time=cairo_dt().strftime("%Y-%m-%d %H:%M"))))
         return "\n".join(x for x in out if x is not None)
+
+    def btc_line(self, btc):
+        """Price line that stands out: bold, price in a code box, 24h change with a green/red dot."""
+        p = money(btc)
+        line = B(T("btc_now", price=p)).replace(iso(p), "<code>" + iso(p) + "</code>")
+        try:
+            chg = 100 * self.ex.ticker("BTC-USDT")[2]
+            line += "\n" + T("btc_24h", dot="🟢" if chg >= 0 else "🔴", pct=pct(chg))
+        except Exception:
+            pass
+        return line
 
     def balance_lines(self):
         need = max(0.0, self.budget - self.st.d["spent"])
