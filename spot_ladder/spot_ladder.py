@@ -30,6 +30,8 @@ Settings (environment variables, or KEY=VALUE lines in extra.env / .env next to 
                                key created INSIDE the OKX sub-account (spoot), Read + Trade, NEVER Withdraw.
                                Live only. At start the bot checks the key: main account or withdraw -> it refuses.
   LADDER_SUBACCOUNT=spoot      name shown in messages
+  LADDER_TARGETS=80000,100000,115000   BTC prices that trigger a one-time "target reached" alert (no selling)
+  LADDER_HEARTBEAT_URL         optional ping URL (e.g. healthchecks.io) hit every 5 min; it alerts you if pings stop
   LADDER_TELEGRAM_BOT_TOKEN / LADDER_TELEGRAM_CHAT_ID its own Telegram bot (falls back to TELEGRAM_BOT_TOKEN /
                                TELEGRAM_CHAT_ID); reports, buttons, summaries at 08:00 and 20:00 Cairo
   REDIS_URL (or LADDER_REDIS_URL)  on Railway: keep the state in Redis so restarts/redeploys lose nothing
@@ -152,6 +154,23 @@ TXT = {
     "stopped": "⏸ تم إيقاف الشراء مؤقتًا. لن يرسل البوت أي أوامر شراء جديدة حتى تضغط «▶️ استئناف الشراء».",
     "stopped_note": "📌 أوامر شراء BTC المفتوحة على OKX تظل نشطة، وقد تُنفّذ أثناء الإيقاف المؤقت.",
     "resumed": "▶️ تم استئناف الشراء.",
+    # --- added 2026-11-25: bot down, approaching the trigger, API key, targets
+    "down_head": "⚠️ كان البوت متوقفًا عن العمل",
+    "down_body": "توقّف البوت من {since} حتى {until} (مدة التوقف: {minutes} دقيقة).",
+    "down_next": "عاد البوت للعمل الآن. راجع الملخص للتأكد من حالة الأوامر.",
+    "near_head": "⚡ اقترب سعر BTC من سعر التفعيل",
+    "near_body": "سعر BTC الآن {price}، ويبعد {pct} عن سعر التفعيل {arm}.",
+    "near_ok": "✔️ رصيد USDT جاهز: {have} من أصل {need} مطلوبة لإكمال الخطة.",
+    "near_short": "⚠️ رصيد USDT غير كافٍ: {have} من أصل {need} مطلوبة. حوّل المبلغ الناقص ({gap} USDT) قبل وصول السعر.",
+    "near_paper": "الوضع التجريبي: لا يوجد رصيد حقيقي للتحقق منه.",
+    "key_head": "🔑 مفتاح OKX لا يعمل",
+    "key_body": "رفضت OKX مفتاح الربط ({reason}). قد يكون انتهى بعد ١٤ يومًا من عدم النشاط، أو حُذف، أو تغيّرت بياناته.",
+    "key_next": "أنشئ مفتاحًا جديدًا للحساب الفرعي بصلاحيتي القراءة والتداول فقط، وضعه في Railway. لن يضع البوت أي أوامر حتى يعود المفتاح للعمل.",
+    "key_back": "✔️ عاد مفتاح OKX للعمل، واستأنف البوت المراقبة.",
+    "refused_head": "⛔ رفض البوت التشغيل الفعلي حمايةً للحساب",
+    "refused_body": "السبب: {reason}",
+    "target_head": "🎯 وصل BTC إلى {target}",
+    "target_body": "هذا أحد أهداف الخطة. البوت لا يبيع تلقائيًا، والقرار لك.",
 }
 BTN_STATUS, BTN_STOP, BTN_RESUME = TXT["btn_status"], TXT["btn_stop"], TXT["btn_resume"]
 KEYBOARD = {"keyboard": [[{"text": BTN_STATUS}], [{"text": BTN_STOP}, {"text": BTN_RESUME}]],
@@ -159,7 +178,7 @@ KEYBOARD = {"keyboard": [[{"text": BTN_STATUS}], [{"text": BTN_STOP}, {"text": B
 BUTTONS = {BTN_STATUS: "/status", BTN_STOP: "/stop", BTN_RESUME: "/resume",
            "📊 الملخص": "/status"}               # old button label, in case Telegram still shows it
 RAW_KEYS = {"icon", "state", "reason"}          # values that are Arabic text, not numbers/Latin
-_LATIN = re.compile(r"(?<![{\w])(BTC|USDT|OKX|ETH|\d+%)(?![\w}])")
+_LATIN = re.compile(r"(?<![{A-Za-z0-9_])(BTC|USDT|OKX|ETH|\d+%)(?![A-Za-z0-9_}])")
 
 
 def _ltr(text):
@@ -248,13 +267,14 @@ def load_env():
                 os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-def cairo_dt():
+def cairo_dt(ts=None):
+    utc = datetime.fromtimestamp(ts, timezone.utc) if ts else datetime.now(timezone.utc)
     try:
         from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo("Africa/Cairo"))
+        return utc.astimezone(ZoneInfo("Africa/Cairo"))
     except Exception:
         from datetime import timedelta
-        return datetime.now(timezone.utc) + timedelta(hours=2)
+        return utc + timedelta(hours=2)
 
 
 def cairo_now():                 # uses iso(), defined below; only called at run time
@@ -287,6 +307,10 @@ def floor_to(x, step):
 
 
 # --------------------------------------------------------------------------- exchange
+class KeyProblem(RuntimeError):
+    """OKX refused the API key (expired, deleted, wrong secret/passphrase, IP...)."""
+
+
 class OKX:
     def __init__(self, live):
         self.live = live
@@ -299,6 +323,9 @@ class OKX:
                              "LADDER_OKX_API_PASSPHRASE (sub-account key) are missing")
         self._inst = {}
         self.paper_limits = {}           # paper mode: cl_id -> [inst, px, sz, state, filled]
+
+    AUTH_CODES = {"50100", "50101", "50102", "50103", "50104", "50105", "50106", "50107", "50110", "50111",
+                  "50112", "50113", "50114", "50119", "50120", "50121", "50122"}
 
     def _req(self, method, path, params=None, body=None, signed=False):
         q = ("?" + urllib.parse.urlencode(params)) if params else ""
@@ -321,8 +348,18 @@ class OKX:
                 if str(out.get("code")) == "0":
                     return out.get("data", [])
                 last = f"OKX {path} code {out.get('code')}: {out.get('msg')} {out.get('data')}"
+                if str(out.get("code")) in self.AUTH_CODES:
+                    raise KeyProblem(f"{out.get('code')} {out.get('msg')}")
                 if str(out.get("code")) != "50011":
                     raise RuntimeError(last)
+            except urllib.error.HTTPError as e:
+                if e.code in (401, 403) and signed:
+                    try:
+                        j = json.loads(e.read().decode())
+                        raise KeyProblem(f"{j.get('code')} {j.get('msg')}")
+                    except (ValueError, AttributeError):
+                        raise KeyProblem(f"HTTP {e.code}")
+                last = f"network: {e}"
             except (urllib.error.URLError, TimeoutError, ConnectionError, json.JSONDecodeError) as e:
                 last = f"network: {e}"
             time.sleep(1.5 * (attempt + 1))
@@ -817,6 +854,41 @@ class Bot:
         except Exception as e:
             log(f"summary after fill failed: {e}")
 
+    def near_check(self, btc):
+        """One alert when BTC comes within 3% of the trigger; re-armed after it goes 5% above."""
+        st = self.st
+        if st.d["armed"] or btc > self.arm * 1.05:
+            if st.d.get("near_sent"):
+                st.d["near_sent"] = False
+                st.save()
+            return
+        if btc <= self.arm * 1.03 and not st.d.get("near_sent"):
+            st.d["near_sent"] = True
+            st.save()
+            need = max(0.0, self.budget - st.d["spent"])
+            lines = [T("near_body", price=money(btc), pct=pct(100 * (self.arm / btc - 1)), arm=money(self.arm))]
+            if not self.ex.live:
+                lines.append(T("near_paper"))
+            else:
+                try:
+                    have = self.ex.usdt()
+                    lines.append(T("near_ok", have=f"{have:,.0f}", need=f"{need:,.0f}") if have + 0.5 >= need else
+                                 T("near_short", have=f"{have:,.0f}", need=f"{need:,.0f}", gap=f"{need - have:,.0f}"))
+                except Exception:
+                    lines.append(T("bal_error"))
+            self.tg.send(card(T("near_head"), lines))
+
+    def target_check(self, btc, targets):
+        st = self.st
+        hit = st.d.setdefault("targets_hit", [])
+        held = any(f["qty"] > 0 for f in st.d["fills"].values())
+        for tgt in targets:
+            if btc >= tgt and tgt not in hit and held:
+                hit.append(tgt)
+                st.save()
+                self.tg.send(card(T("target_head", target=money(tgt)), [T("target_body")]))
+                self.tg.send(self.summary(btc, T("target_head", target=money(tgt))[1:]))
+
     def tick(self, btc):
         if self.st.d.get("paused"):
             return
@@ -854,9 +926,20 @@ def main():
     log(f"state saved in {'Redis ' + st.key if st.r is not None else st.path}")
     ex, tg = OKX(live), TG()
     acct = ""
+    key_ok = True
+    key_err = ""
     if live:
-        acct = ex.check_account(os.environ.get("LADDER_SUBACCOUNT", "spoot"))
-        log("account check OK: " + acct)
+        try:
+            acct = ex.check_account(os.environ.get("LADDER_SUBACCOUNT", "spoot"))
+            log("account check OK: " + acct)
+        except KeyProblem as e:
+            key_ok, key_err = False, str(e)
+            log(f"API key refused: {e}")
+        except SystemExit as e:                      # main-account key or withdraw permission: refuse, but say why
+            log(str(e))
+            tg.send(card(T("refused_head"), [T("refused_body", reason=str(e)[:200])]))
+            while True:
+                time.sleep(3600)
     bot = Bot(ex, st, tg, g("LADDER_BUDGET", 2590), arm, disarm,
               g("LADDER_MAX_PUMP", 0.10), g("LADDER_MAX_SLIPPAGE", 0.005))
     if "--status" in sys.argv:
@@ -869,6 +952,25 @@ def main():
         log("OKX " + os.environ.get("LADDER_SUBACCOUNT", "spoot") + ": " + acct)
         head += "\n" + T("t_account_ok", account=os.environ.get("LADDER_SUBACCOUNT", "spoot"))
     tg.send(bot.summary(ex.ticker("BTC-USDT")[0], head))
+    # was the bot down? (last heartbeat saved in the state)
+    now_ts = time.time()
+    last_alive = st.d.get("alive")
+    if last_alive and now_ts - last_alive > 600:
+        since = cairo_dt(last_alive).strftime("%Y-%m-%d %H:%M")
+        until = cairo_dt().strftime("%Y-%m-%d %H:%M")
+        tg.send(card(T("down_head"), [T("down_body", since=since, until=until,
+                                         minutes=f"{(now_ts - last_alive) / 60:,.0f}"), T("down_next")]))
+    st.d["alive"] = now_ts
+    st.save()
+
+    def key_alert(err):
+        tg.send(card(T("key_head"), [T("key_body", reason=err[:120]), T("key_next")]))
+
+    if not key_ok:
+        key_alert(key_err)
+    targets = [float(x) for x in os.environ.get("LADDER_TARGETS", "80000,100000,115000").split(",") if x.strip()]
+    heartbeat_url = os.environ.get("LADDER_HEARTBEAT_URL", "").strip()
+    last_key_check = last_beat = 0.0
     # scheduled summaries, Cairo time; what was already sent is kept in the state (survives restarts)
     SCHEDULE = [(8, "morning", TXT["t_morning"]), (20, "evening", TXT["t_evening"])]
     sent = st.d.setdefault("summaries_sent", {})
@@ -891,7 +993,31 @@ def main():
         try:
             handle_commands()
             btc = ex.ticker("BTC-USDT")[0]
-            bot.tick(btc)
+            nowt = time.time()
+            st.d["alive"] = nowt
+            st.save()
+            if live and (not key_ok or nowt - last_key_check > 1800):    # key check every 30 min
+                last_key_check = nowt
+                try:
+                    ex.usdt()
+                    if not key_ok:
+                        key_ok = True
+                        tg.send(B(T("key_back")))
+                except KeyProblem as e:
+                    if key_ok:
+                        key_ok = False
+                        key_alert(str(e))
+            if heartbeat_url and nowt - last_beat > 300:                 # external "bot is alive" ping
+                last_beat = nowt
+                try:
+                    urllib.request.urlopen(heartbeat_url, timeout=10).read()
+                except Exception as e:
+                    log(f"heartbeat failed: {e}")
+            if key_ok:
+                bot.near_check(btc)
+                bot.tick(btc)
+                bot.target_check(btc, targets)
+
             t = cairo_dt()
             day = t.strftime("%Y-%m-%d")
             for hour, key, title in SCHEDULE:
@@ -899,6 +1025,11 @@ def main():
                     sent[key] = day
                     st.save()
                     tg.send(bot.summary(btc, title))
+        except KeyProblem as e:
+            log(f"API key refused: {e}")
+            if key_ok:
+                key_ok = False
+                key_alert(str(e))
         except Exception as e:
             log(f"error: {e}")
             bot.once_alert("last_err", T("error", error=str(e)[:200]))
