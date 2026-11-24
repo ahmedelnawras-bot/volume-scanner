@@ -177,6 +177,23 @@ class OKX:
             raise SystemExit("REFUSED: this API key has no TRADE permission.")
         return f"sub-account uid {uid} (main {main_uid}), key permissions: {perm}"
 
+    def balances(self):
+        """Live only: {'total_usd': x, 'coins': [(ccy, qty, usd_value, avail, frozen)]}; None in paper mode."""
+        if not self.live:
+            return None
+        d = self._req("GET", "/api/v5/account/balance", signed=True)
+        if not d:
+            return {"total_usd": 0.0, "coins": []}
+        f = lambda v: float(v) if v not in (None, "") else 0.0
+        coins = []
+        for x in d[0].get("details", []):
+            qty = f(x.get("eq") or x.get("cashBal"))
+            if qty <= 0:
+                continue
+            coins.append((x.get("ccy", "?"), qty, f(x.get("eqUsd")), f(x.get("availBal")), f(x.get("frozenBal"))))
+        coins.sort(key=lambda c: -c[2])
+        return {"total_usd": f(d[0].get("totalEq")), "coins": coins}
+
     def usdt(self):
         if not self.live:
             return float("inf")
@@ -383,12 +400,41 @@ class Bot:
                      f"({tot_val - tot_cost:+,.0f}$ / {100 * (tot_val / tot_cost - 1):+.1f}%)")
         else:
             L += ["", f"{R}🧾 المحفظة: لا توجد مشتريات بعد"]
+        L += [""] + self.balance_lines()
         L += ["", f"{R}⚙️ القواعد: تُشترى العملات البديلة عند تنفيذ أمر BTC، إلا إذا ارتفعت العملة أكثر من "
                   f"{100 * self.max_pump:.0f}% خلال 24 ساعة، فيُحوَّل مبلغها إلى 60% BTC و40% ETH. لا يقوم البوت بأي عملية بيع."]
         if st.d.get("paused"):
             L.append(f"{R}⏸ الشراء متوقف مؤقتًا - اضغط ▶️ استئناف الشراء")
         L.append(f"{R}🕒 {cairo_now()}")
         return "\n".join(L)
+
+    def balance_lines(self):
+        R = RLM
+        need = max(0.0, self.budget - self.st.d["spent"])
+        try:
+            b = self.ex.balances()
+        except Exception as e:
+            return [f"{R}🏦 الرصيد: تعذّر جلبه من OKX الآن ({str(e)[:80]})"]
+        if b is None:
+            return [f"{R}🏦 الرصيد: غير متاح في الوضع التجريبي (لا يوجد مفتاح OKX).",
+                    f"{R}   المبلغ اللازم لإكمال الخطة: {need:,.0f} USDT"]
+        L = [f"{R}🏦 رصيد الحساب الفرعي: {b['total_usd']:,.2f}$"]
+        usdt_free = usdt_frozen = 0.0
+        for ccy, qty, usd, avail, frozen in b["coins"]:
+            if ccy == "USDT":
+                usdt_free, usdt_frozen = avail, frozen
+                L.append(f"{R}• USDT: {qty:,.2f} (متاح {avail:,.2f} | محجوز في أوامر {frozen:,.2f})")
+            else:
+                L.append(f"{R}• {ccy}: {fmt(round(qty, 8))} ≈ {usd:,.2f}$")
+        if not b["coins"]:
+            L.append(f"{R}• الحساب فارغ")
+        have = usdt_free + usdt_frozen
+        if have + 0.5 < need:
+            L.append(f"{R}⚠️ USDT في الحساب ({have:,.0f}) أقل من اللازم لإكمال الخطة ({need:,.0f}). "
+                     f"يلزم تحويل {need - have:,.0f} USDT.")
+        else:
+            L.append(f"{R}✔️ USDT يكفي لإكمال الخطة (اللازم {need:,.0f})")
+        return L
 
     def once_alert(self, key, text):
         if self.st.d["alerts"].get(key) != text:
