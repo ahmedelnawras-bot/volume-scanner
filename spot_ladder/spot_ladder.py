@@ -468,21 +468,24 @@ class Bot:
         if not st.d["armed"] and btc <= self.arm and open_lv:
             need = sum(pct * self.budget * BTC_W for lv, pct in open_lv if st.lv(lv)["btc"] == "waiting")
             if st.d["spent"] + need > self.budget * 1.001:
-                self.once_alert("btc_budget", "BTC limits not placed: budget would be exceeded")
+                self.once_alert("btc_budget", RLM + "⚠️ لم توضع أوامر " + iso("BTC") + " لأنها ستتجاوز الميزانية.")
                 return
             if ex.usdt() < need * 0.995:
                 st.d["unfunded"] = True
-                self.once_alert("btc_bal", f"PROBLEM: BTC {btc:,.0f} is under {self.arm:,.0f} but USDT balance is "
-                                           f"less than the {need:,.2f} needed for the BTC limit orders. Nothing placed. "
-                                           f"Add USDT - orders will only ever be placed AT the level prices.")
+                self.once_alert("btc_bal", f"{RLM}🚨 مشكلة: رصيد {iso('USDT')} غير كافٍ\n"
+                                           f"{RLM}سعر {iso('BTC')} الآن {iso(f'{btc:,.0f}$')}، أي دون {iso(f'{self.arm:,.0f}$')}، "
+                                           f"لكن الرصيد أقل من {iso(f'{need:,.2f} USDT')} اللازمة لأوامر {iso('BTC')}.\n"
+                                           f"{RLM}لم يوضع أي أمر. حوّل {iso('USDT')} إلى الحساب الفرعي، وستوضع الأوامر "
+                                           f"عند أسعار المستويات فقط، ولن يشتري البوت بسعر أعلى.")
                 for lv, pct in open_lv:
                     if btc <= lv:
-                        self.once_alert(f"miss{lv}", f"PROBLEM: BTC touched {lv:,} with no order (no USDT). "
-                                                     f"This level was missed. It will NOT be bought at a higher "
-                                                     f"price later - only if BTC comes back to {lv:,} after you add USDT.")
+                        self.once_alert(f"miss{lv}", f"{RLM}🚨 مشكلة: فات مستوى {iso(f'{lv:,}$')}\n"
+                                                     f"{RLM}لمس {iso('BTC')} هذا المستوى ولم يكن هناك أمر بسبب نقص {iso('USDT')}.\n"
+                                                     f"{RLM}لن يُشترى لاحقًا بسعر أعلى، بل فقط إذا عاد {iso('BTC')} إلى "
+                                                     f"{iso(f'{lv:,}$')} بعد تحويل الرصيد.")
                 return
             if st.d.pop("unfunded", False):
-                self.tg.send("USDT found - placing the BTC limit orders now, at the level prices only.")
+                self.tg.send(f"{RLM}✔️ وصل رصيد {iso('USDT')}. توضع أوامر {iso('BTC')} الآن عند أسعار المستويات فقط.")
             st.d["arm_round"] += 1
             lot, mn, tick, _ = ex.inst("BTC-USDT")
             placed = []
@@ -500,10 +503,15 @@ class Bot:
                 ex.place_limit("BTC-USDT", lv, sz, s["btc_id"])
                 s["btc"] = "placed"
                 st.save()
-                placed.append(f"{lv:,} x {fmt(sz)} BTC")
+                placed.append(f"{RLM}• مستوى {iso(f'{lv:,}$')}: كمية {iso(fmt(sz) + ' BTC')} بقيمة "
+                              f"{iso(f'{sz * lv:,.2f}$')}")
             st.d["armed"] = True
             st.save()
-            self.tg.send(f"BTC {btc:,.0f} <= {self.arm:,.0f}: limit buys placed on OKX\n  " + "\n  ".join(placed))
+            where = "على " + iso("OKX") if ex.live else "(تجريبية)"
+            self.tg.send(f"{RLM}📌 تم وضع أوامر شراء {iso('BTC')} {where}\n"
+                         f"{RLM}السعر الآن {iso(f'{btc:,.0f}$')}، وهو دون {iso(f'{self.arm:,.0f}$')}.\n"
+                         + "\n".join(placed) +
+                         f"\n{RLM}تُلغى الأوامر غير المنفذة إذا ارتفع {iso('BTC')} فوق {iso(f'{self.disarm:,.0f}$')}.")
             return
         if not st.d["armed"]:
             return
@@ -517,15 +525,19 @@ class Bot:
                 s["btc"], s["btc_qty"], s["btc_cost"] = "filled", q, q * avg
                 st.add_fill("BTC", q, q * avg)
                 st.save()
-                self.tg.send(f"BTC limit {lv:,} FILLED: {fmt(round(q, 8))} BTC @ {avg:,.1f} = {q * avg:,.2f} USDT")
+                self.tg.send(f"{RLM}✅ تم تنفيذ مستوى {iso(f'{lv:,}$')}\n"
+                             f"{RLM}اشترى البوت {iso(fmt(round(q, 8)) + ' BTC')} بسعر {iso(f'{avg:,.1f}$')} "
+                             f"بقيمة {iso(f'{q * avg:,.2f}$')}.\n"
+                             f"{RLM}جارٍ شراء العملات البديلة الخاصة بهذا المستوى...")
             elif state in ("canceled", "missing", "mmp_canceled"):
                 s["btc"] = "waiting"
                 if q > 0:
                     s["btc"], s["btc_qty"], s["btc_cost"] = "filled (partial)", q, q * avg
                     st.add_fill("BTC", q, q * avg)
                 st.save()
-                self.tg.send(f"BTC limit {lv:,} is no longer on OKX ({state}). "
-                             + ("Partial fill kept." if q > 0 else "It will be placed again next time."))
+                self.tg.send(f"{RLM}⚠️ أمر {iso('BTC')} عند مستوى {iso(f'{lv:,}$')} لم يعد موجودًا على {iso('OKX')} "
+                             f"{iso('(' + str(state) + ')')}.\n" + RLM +
+                             ("نُفذ جزء منه وتم احتسابه." if q > 0 else "سيوضع الأمر من جديد في المرة القادمة."))
         # disarm above the cancel price
         if btc >= self.disarm:
             for lv, pct in LEVELS:
@@ -542,8 +554,9 @@ class Bot:
                 st.save()
             st.d["armed"] = False
             st.save()
-            self.tg.send(f"BTC back at {btc:,.0f} (>= {self.disarm:,.0f}): unfilled BTC limits cancelled, USDT freed. "
-                         f"They go back in at {self.arm:,.0f}.")
+            self.tg.send(f"{RLM}↩️ ارتفع {iso('BTC')} إلى {iso(f'{btc:,.0f}$')}، فوق {iso(f'{self.disarm:,.0f}$')}\n"
+                         f"{RLM}أُلغيت أوامر {iso('BTC')} غير المنفذة وتحرر رصيد {iso('USDT')}.\n"
+                         f"{RLM}ستوضع الأوامر من جديد عند {iso(f'{self.arm:,.0f}$')}.")
 
     # ---- alts for a filled level
     def buy_now(self, coin, usd, tag):
@@ -568,10 +581,10 @@ class Bot:
     def ok_to_buy(self, coin):
         lot, mn, tick, live = self.ex.inst(f"{coin}-USDT")
         if not live:
-            return False, "not trading on OKX"
+            return False, "التداول عليها متوقف على " + iso("OKX")
         _, _, chg = self.ex.ticker(f"{coin}-USDT")
         if chg > self.max_pump:
-            return False, f"+{100 * chg:.0f}% in 24h"
+            return False, "ارتفعت " + iso(f"+{100 * chg:.0f}%") + " خلال ٢٤ ساعة"
         return True, ""
 
     def alt_step(self, lv, pct, btc=None):
@@ -580,8 +593,9 @@ class Bot:
         if s["alts"] == "in progress":
             st.d["paused"] = True
             st.save()
-            self.tg.send(f"Alt buying for level {lv:,} was interrupted earlier. Paused - check OKX orders, then set "
-                         f"levels.{lv}.alts to done or waiting in {os.path.basename(st.path)} and send /resume.")
+            self.tg.send(f"{RLM}🚨 مشكلة: توقف شراء العملات البديلة لمستوى {iso(f'{lv:,}$')} في منتصفه\n"
+                         f"{RLM}أوقف البوت الشراء احتياطيًا حتى لا يتكرر الشراء. راجع أوامر {iso('OKX')} ثم تواصل "
+                         f"لتعديل الحالة قبل الضغط على ▶️ استئناف الشراء.")
             return
         frac = 1.0
         if s["btc"] == "filled (partial)":
@@ -591,36 +605,41 @@ class Bot:
         if st.d["spent"] + need > self.budget * 1.001:
             s["alts"] = "skipped (budget)"
             st.save()
-            self.tg.send(f"Level {lv:,} alts skipped: budget would be exceeded")
+            self.tg.send(f"{RLM}⚠️ لم تُشترَ العملات البديلة لمستوى {iso(f'{lv:,}$')} لأنها ستتجاوز الميزانية.")
             return
         ceiling = lv * (1 + self.alt_tol)
         if btc is not None and btc > ceiling:
-            self.once_alert(f"alt_far{lv}", f"PROBLEM: level {lv:,} alts were not bought in time (no USDT) and BTC is "
-                                            f"now {btc:,.0f}, above {ceiling:,.0f}. They will NOT be bought at today's "
-                                            f"prices. They will be bought only if BTC comes back to {ceiling:,.0f} or lower "
-                                            f"(and USDT is there).")
+            self.once_alert(f"alt_far{lv}", f"{RLM}🚨 مشكلة: العملات البديلة لمستوى {iso(f'{lv:,}$')} لم تُشترَ\n"
+                                            f"{RLM}لم يتوفر رصيد {iso('USDT')} في حينه، وسعر {iso('BTC')} الآن "
+                                            f"{iso(f'{btc:,.0f}$')}، أي فوق {iso(f'{ceiling:,.0f}$')}.\n"
+                                            f"{RLM}لن تُشترى بأسعار اليوم، بل فقط إذا عاد {iso('BTC')} إلى "
+                                            f"{iso(f'{ceiling:,.0f}$')} أو أقل مع توفر الرصيد.")
             return
         if self.ex.usdt() < need * 0.995:
-            self.once_alert(f"alt_bal{lv}", f"PROBLEM: BTC level {lv:,} filled but USDT balance is less than the "
-                                            f"{need:,.2f} needed for the alts. Add USDT now - the alts are bought only "
-                                            f"while BTC stays at or under {ceiling:,.0f}.")
+            self.once_alert(f"alt_bal{lv}", f"{RLM}🚨 مشكلة: رصيد {iso('USDT')} لا يكفي للعملات البديلة\n"
+                                            f"{RLM}تم تنفيذ مستوى {iso(f'{lv:,}$')} لـ {iso('BTC')}، لكن الرصيد أقل من "
+                                            f"{iso(f'{need:,.2f} USDT')} اللازمة.\n"
+                                            f"{RLM}حوّل الرصيد الآن؛ ستُشترى العملات البديلة فقط ما دام {iso('BTC')} عند "
+                                            f"{iso(f'{ceiling:,.0f}$')} أو أقل.")
             return
         s["alts"] = "in progress"
         st.save()
-        report = [f"Level {lv:,}: buying alts for {need:,.0f} USDT ({'LIVE' if self.ex.live else 'PAPER'})"]
+        report = [f"{RLM}🛒 شراء العملات البديلة - مستوى {iso(f'{lv:,}$')}" + ("" if self.ex.live else " (تجريبي)"),
+                  f"{RLM}المبلغ المخصص: {iso(f'{need:,.2f}$')}"]
         backup_usd = 0.0
         for coin, w in ALTS:
             usd = pct * self.budget * w * frac
             ok, why = self.ok_to_buy(coin)
             if not ok:
                 backup_usd += usd
-                report.append(f"  {coin}: SKIPPED ({why}) -> {usd:,.2f} to backup")
+                report.append(f"{RLM}⏭ {iso(coin)}: لم تُشترَ لأنها {why}، وحُوِّل مبلغها {iso(f'{usd:,.2f}$')} للبديل")
                 continue
             q, c = self.buy_now(coin, usd, f"A{lv}")
             st.add_fill(coin, q, c)
             st.save()
-            miss = "" if c >= usd * 0.97 else f"  (only {c:,.2f} of {usd:,.2f} filled)"
-            report.append(f"  {coin}: {fmt(round(q, 8))} @ {c / q if q else 0:.6g} = {c:,.2f}{miss}")
+            miss = "" if c >= usd * 0.97 else f" ⚠️ نُفذ {iso(f'{c:,.2f}$')} فقط من {iso(f'{usd:,.2f}$')}"
+            report.append(f"{RLM}✅ {iso(coin)}: كمية {iso(fmt(round(q, 8)))} بسعر {iso(f'{c / q if q else 0:,.6g}')} "
+                          f"بقيمة {iso(f'{c:,.2f}$')}{miss}")
         if backup_usd > 0:
             eth_ok, _ = self.ok_to_buy("ETH")
             parts = [("BTC", backup_usd * (1.0 if not eth_ok else BACKUP[0][1]))]
@@ -630,12 +649,17 @@ class Bot:
                 q, c = self.buy_now(coin, usd, f"X{lv}")
                 st.add_fill(coin, q, c)
                 st.save()
-                report.append(f"  backup {coin}: {fmt(round(q, 8))} @ {c / q if q else 0:.6g} = {c:,.2f}")
+                report.append(f"{RLM}🔁 بديل {iso(coin)}: كمية {iso(fmt(round(q, 8)))} بسعر "
+                              f"{iso(f'{c / q if q else 0:,.6g}')} بقيمة {iso(f'{c:,.2f}$')}")
             if not eth_ok:
-                report.append("  (ETH also failed the condition - backup all to BTC)")
+                report.append(f"{RLM}ℹ️ {iso('ETH')} لم يحقق الشرط أيضًا، فذهب البديل كله إلى {iso('BTC')}")
         s["alts"] = "done"
         st.save()
         self.tg.send("\n".join(report))
+        try:
+            self.tg.send(self.summary(btc, f"📊 الملخص بعد تنفيذ مستوى {iso(f'{lv:,}$')}"))
+        except Exception as e:
+            log(f"summary after fill failed: {e}")
 
     def tick(self, btc):
         if self.st.d.get("paused"):
@@ -713,7 +737,7 @@ def main():
                 tg.send(bot.summary(btc, "☀️ الملخص الصباحي - سلم السبوت"))
         except Exception as e:
             log(f"error: {e}")
-            bot.once_alert("last_err", f"Spot ladder error: {str(e)[:200]}")
+            bot.once_alert("last_err", f"{RLM}⚠️ خطأ في البوت: {iso(str(e)[:200])}")
         for _ in range(12):                 # price every 60 s, buttons answered within ~5 s
             time.sleep(5)
             try:
@@ -804,17 +828,17 @@ def selftest():
     def go3(p):
         ex3.px["BTC"] = p; b3.tick(p)
     go3(52800)                                     # under 53k, no USDT
-    assert not st3.d["armed"] and any("touched 53,000" in t for t in sent), sent
+    assert not st3.d["armed"] and any("فات مستوى" in t and "53,000" in t for t in sent), sent
     go3(56500); ex3.bal = 5000.0; go3(56500)        # bounced, money added -> must NOT place/buy
     assert not st3.d["armed"] and "BTC" not in st3.d["fills"], "bought after bounce!"
     go3(54500)                                     # back under 55k -> limits at level prices only
     assert st3.d["armed"] and "BTC" not in st3.d["fills"], "54.5k must not fill a 53k limit"
     ex3.bal = 0.0; go3(52950)                      # 53k fills, but no USDT for alts
     assert st3.lv(53000)["btc"] == "filled" and st3.lv(53000)["alts"] == "waiting"
-    assert any("USDT balance is less" in t for t in sent)
+    assert any("لا يكفي للعملات البديلة" in t for t in sent)
     go3(54500); ex3.bal = 5000.0; go3(54500)       # bounced above 53k+2%, money added -> no alt buy
     assert st3.lv(53000)["alts"] == "waiting" and "ADA" not in st3.d["fills"], "alts bought at higher price!"
-    assert any("will NOT be bought at today" in t for t in sent)
+    assert any("لن تُشترى بأسعار اليوم" in t for t in sent)
     go3(53800)                                     # back within +2% -> alts bought
     assert st3.lv(53000)["alts"] == "done" and "ADA" in st3.d["fills"]
     print()
