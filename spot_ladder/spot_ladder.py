@@ -50,6 +50,12 @@ BTC_W = 0.30
 ALTS = [("ETH", 0.20), ("ADA", 0.20), ("LINK", 0.10), ("NEAR", 0.10), ("PEPE", 0.10)]
 BACKUP = [("BTC", 0.60), ("ETH", 0.40)]
 BASE = "https://www.okx.com"
+# Telegram buttons under the chat box (a button press arrives as its text)
+BTN_STATUS, BTN_STOP, BTN_RESUME = "📊 الملخص", "⏸ إيقاف الشراء", "▶️ تشغيل الشراء"
+KEYBOARD = {"keyboard": [[{"text": BTN_STATUS}], [{"text": BTN_STOP}, {"text": BTN_RESUME}]],
+            "resize_keyboard": True, "is_persistent": True}
+BUTTONS = {BTN_STATUS: "/status", BTN_STOP: "/stop", BTN_RESUME: "/resume"}
+RLM = "\u200f"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -63,6 +69,16 @@ def load_env():
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
                 os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+def cairo_now():
+    try:
+        from zoneinfo import ZoneInfo
+        t = datetime.now(ZoneInfo("Africa/Cairo"))
+    except Exception:
+        from datetime import timedelta
+        t = datetime.now(timezone.utc) + timedelta(hours=2)
+    return t.strftime("%Y-%m-%d %H:%M") + " بتوقيت القاهرة"
 
 
 def now():
@@ -243,7 +259,8 @@ class TG:
         if not (self.tok and self.chat):
             return
         try:
-            body = urllib.parse.urlencode({"chat_id": self.chat, "text": text}).encode()
+            body = urllib.parse.urlencode({"chat_id": self.chat, "text": text,
+                                           "reply_markup": json.dumps(KEYBOARD)}).encode()
             urllib.request.urlopen(f"https://api.telegram.org/bot{self.tok}/sendMessage", body, timeout=15).read()
         except Exception as e:
             log("telegram send failed: " + str(e).replace(self.tok, "<token>"))   # never print the token
@@ -265,7 +282,8 @@ class TG:
             self.offset = u["update_id"] + 1
             m = u.get("message") or {}
             if str(m.get("chat", {}).get("id")) == str(self.chat):
-                out.append((m.get("text") or "").strip().split("@")[0].lower())
+                t = (m.get("text") or "").strip()
+                out.append(BUTTONS.get(t, t.split("@")[0].lower()))
         return out
 
 
@@ -315,23 +333,62 @@ class Bot:
         self.budget, self.arm, self.disarm, self.max_pump, self.slip = budget, arm, disarm, max_pump, slip
 
     # ---- summary
-    def summary(self, btc=None):
-        st = self.st
-        lines = [f"Spot ladder ({'LIVE' if self.ex.live else 'PAPER'}) budget {self.budget:,.0f} USDT, "
-                 f"spent {st.d['spent']:,.2f}"]
+    def summary(self, btc=None, title="📊 ملخص سلم السبوت"):
+        st, R = self.st, RLM
+        live = self.ex.live
+        spent = st.d["spent"]
+        left = self.budget - spent
+        L = [f"{R}{title}", f"{R}{'🟢 لايف - أوامر حقيقية' if live else '🧪 تجريبي (Paper) - مفيش شراء حقيقي'}",
+             f"{R}━━━━━━━━━━━━━━"]
         if btc:
-            state = "BTC limits placed" if st.d["armed"] else f"limits go in at {self.arm:,.0f}"
-            lines.append(f"BTC {btc:,.0f} - {state}")
+            L.append(f"{R}₿ سعر BTC دلوقتي: {btc:,.0f}$")
+            if st.d["armed"]:
+                L.append(f"{R}📌 أوامر BTC {'متحطة على OKX' if live else 'الورقية متحطة'} ومستنية المستويات")
+                L.append(f"{R}↩️ هتتلغي لو BTC طلع فوق {self.disarm:,.0f}$ ({100 * (self.disarm / btc - 1):+.1f}%)")
+            else:
+                L.append(f"{R}🎯 أوامر BTC هتتحط عند {self.arm:,.0f}$ (محتاج {100 * (self.arm / btc - 1):+.1f}%)")
+            nxt = [lv for lv, _ in LEVELS if not st.lv(lv)["btc"].startswith("filled")]
+            if nxt:
+                L.append(f"{R}📍 أقرب مستوى شراء: {nxt[0]:,.0f}$ (محتاج {100 * (nxt[0] / btc - 1):+.1f}%)")
+        L += [f"{R}💰 الميزانية {self.budget:,.0f}$ | اتصرف {spent:,.0f}$ ({100 * spent / self.budget:.0f}%) | "
+              f"باقي {left:,.0f}$", "", f"{R}🪜 المستويات"]
+        icons = {"waiting": "⏳", "placed": "📌", "placing": "📌", "filled": "✅", "filled (partial)": "🟡"}
+        words = {"waiting": "مستني", "placed": "أمر متحط", "placing": "بيتحط", "filled": "BTC اتشرى",
+                 "filled (partial)": "BTC اتشرى جزء"}
         for lv, pct in LEVELS:
-            s = st.lv(lv)
-            lines.append(f"  {lv:,} ({pct * self.budget:,.0f}$): BTC {s['btc']}, alts {s['alts']}")
-        for coin, f in st.d["fills"].items():
-            if f["qty"] > 0:
-                lines.append(f"  {coin}: {fmt(round(f['qty'], 8))} @ avg {f['cost'] / f['qty']:.6g} "
-                             f"(cost {f['cost']:,.2f})")
+            s_ = st.lv(lv)
+            b = s_["btc"]
+            alts = {"done": "، والعملات اتشرت ✅", "in progress": "، العملات بتتشرى", "waiting": ""}.get(
+                s_["alts"], f"، العملات: {s_['alts']}")
+            if not b.startswith("filled"):
+                alts = ""
+            L.append(f"{R}{icons.get(b, '⛔')} {lv:,.0f}$ - {pct * self.budget:,.0f}$ ({pct * 100:.0f}%) - "
+                     f"{words.get(b, b)}{alts}")
+        held = [(c, f) for c, f in st.d["fills"].items() if f["qty"] > 0]
+        if held:
+            L += ["", f"{R}🧾 المحفظة (متوسط الشراء ← السعر دلوقتي)"]
+            tot_cost = tot_val = 0.0
+            for coin, f in held:
+                avg = f["cost"] / f["qty"]
+                try:
+                    px = self.ex.ticker(f"{coin}-USDT")[0]
+                except Exception:
+                    px = avg
+                val = f["qty"] * px
+                tot_cost += f["cost"]
+                tot_val += val
+                L.append(f"{R}• {coin}: {f['cost']:,.0f}$ | {avg:.6g} ← {px:.6g} | "
+                         f"{100 * (val / f['cost'] - 1):+.1f}%")
+            L.append(f"{R}الإجمالي: اتدفع {tot_cost:,.0f}$ | قيمته دلوقتي {tot_val:,.0f}$ "
+                     f"({tot_val - tot_cost:+,.0f}$ / {100 * (tot_val / tot_cost - 1):+.1f}%)")
+        else:
+            L += ["", f"{R}🧾 المحفظة: لسه مفيش مشتريات"]
+        L += ["", f"{R}⚙️ القواعد: العملات البديلة بتتشرى لما أمر BTC يتنفذ، إلا لو العملة طالعة أكتر من "
+                  f"{100 * self.max_pump:.0f}% في 24 ساعة؛ فلوسها تروح 60% BTC و40% ETH. مفيش بيع."]
         if st.d.get("paused"):
-            lines.append("PAUSED - send /resume to continue")
-        return "\n".join(lines)
+            L.append(f"{R}⏸ الشراء متوقف - اضغط ▶️ تشغيل الشراء")
+        L.append(f"{R}🕒 {cairo_now()}")
+        return "\n".join(L)
 
     def once_alert(self, key, text):
         if self.st.d["alerts"].get(key) != text:
@@ -562,28 +619,42 @@ def main():
         return
     mode = "TEST REHEARSAL (paper, fake levels " + ", ".join(f"{lv:,.0f}" for lv, _ in LEVELS) + ")" if test \
         else ("LIVE" if live else "PAPER - no real orders")
-    tg.send(f"Spot ladder v2 started ({mode})." + (f"\nOKX {os.environ.get('LADDER_SUBACCOUNT', 'spoot')}: {acct}" if acct else "") + "\n" +
-            bot.summary(ex.ticker("BTC-USDT")[0]))
+    head = "🚀 بوت سلم السبوت اشتغل" + (" - بروفة بمستويات وهمية" if test else "")
+    if acct:
+        log("OKX " + os.environ.get("LADDER_SUBACCOUNT", "spoot") + ": " + acct)
+        head += f"\n{RLM}🔐 الحساب الفرعي {os.environ.get('LADDER_SUBACCOUNT', 'spoot')} اتأكد (مفتاح من غير سحب)"
+    tg.send(bot.summary(ex.ticker("BTC-USDT")[0], head))
     last_daily = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    def handle_commands():
+        for cmd in tg.commands():
+            if cmd == "/stop":
+                st.d["paused"] = True; st.save()
+                tg.send(RLM + "⏸ الشراء اتوقف. البوت مش هيحط أو يشتري حاجة جديدة لحد ما تضغط ▶️ تشغيل الشراء.\n"
+                        + RLM + "ملحوظة: أوامر BTC اللي متحطة على OKX فعلاً بتفضل زي ما هي.")
+            elif cmd == "/resume":
+                st.d["paused"] = False; st.save()
+                tg.send(RLM + "▶️ الشراء رجع يشتغل.")
+            elif cmd in ("/status", "/start"):
+                tg.send(bot.summary(ex.ticker("BTC-USDT")[0]))
+
     while True:
         try:
-            for cmd in tg.commands():
-                if cmd == "/stop":
-                    st.d["paused"] = True; st.save(); tg.send("Paused. /resume to continue.")
-                elif cmd == "/resume":
-                    st.d["paused"] = False; st.save(); tg.send("Resumed.")
-                elif cmd == "/status":
-                    tg.send(bot.summary(ex.ticker("BTC-USDT")[0]))
+            handle_commands()
             btc = ex.ticker("BTC-USDT")[0]
             bot.tick(btc)
             day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             if datetime.now(timezone.utc).hour >= 6 and last_daily != day:      # ~08:00 Cairo
                 last_daily = day
-                tg.send(bot.summary(btc))
+                tg.send(bot.summary(btc, "☀️ ملخص الصبح - سلم السبوت"))
         except Exception as e:
             log(f"error: {e}")
             bot.once_alert("last_err", f"Spot ladder error: {str(e)[:200]}")
-        time.sleep(60)
+        for _ in range(12):                 # price every 60 s, buttons answered within ~5 s
+            time.sleep(5)
+            try:
+                handle_commands()
+            except Exception as e:
+                log(f"command error: {e}")
 
 
 # --------------------------------------------------------------------------- self test
