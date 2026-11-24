@@ -87,7 +87,7 @@ def cairo_dt():
 
 def cairo_now():                 # uses iso(), defined below; only called at run time
     t = cairo_dt()
-    return iso(t.strftime("%Y-%m-%d %H:%M")) + " بتوقيت القاهرة"
+    return iso(t.strftime("%Y-%m-%d %H:%M")) + " (بتوقيت القاهرة)"
 
 
 def now():
@@ -359,7 +359,7 @@ class Bot:
         self.budget, self.arm, self.disarm, self.max_pump, self.slip = budget, arm, disarm, max_pump, slip
 
     # ---- summary
-    def summary(self, btc=None, title="📊 ملخص سلم السبوت"):
+    def summary(self, btc=None, title="📊 ملخص خطة الشراء المتدرّج"):
         """Arabic, right-to-left. Every Latin word / number is wrapped in iso() so it keeps its own
         left-to-right order inside the Arabic line (Telegram otherwise scrambles '$', '%', '+/-')."""
         st, R = self.st, RLM
@@ -369,41 +369,41 @@ class Bot:
         usd = lambda x, d=0: iso(f"{x:,.{d}f}$")
         pc = lambda x: iso(f"{x:+.1f}%")
         L = [R + title,
-             R + ("🟢 تشغيل فعلي: أوامر حقيقية على " + iso("OKX") if live
-                  else "🧪 وضع تجريبي " + iso("(Paper)") + ": لا يتم أي شراء حقيقي"),
+             R + ("🟢 التشغيل الفعلي: تُنفَّذ الأوامر على منصة " + iso("OKX") if live
+                  else "🧪 الوضع التجريبي: لا تُنفَّذ أي عمليات شراء حقيقية"),
              R + "━━━━━━━━━━━━━━"]
         if btc:
             L.append(f"{R}₿ سعر {iso('BTC')} الحالي: {usd(btc)}")
             if st.d["armed"]:
-                L.append(f"{R}📌 أوامر شراء {iso('BTC')} {'موضوعة على ' + iso('OKX') if live else 'التجريبية موضوعة'}"
-                         f" بانتظار المستويات")
-                L.append(f"{R}↩️ تُلغى الأوامر إذا ارتفع {iso('BTC')} فوق {usd(self.disarm)}، "
-                         f"والمسافة {pc(100 * (self.disarm / btc - 1))}")
+                L.append(f"{R}📌 أوامر شراء {iso('BTC')} قائمة{' على ' + iso('OKX') if live else ' (تجريبيًا)'}"
+                         f" بانتظار بلوغ المستويات")
+                L.append(f"{R}↩️ تُلغى الأوامر تلقائيًا إذا تجاوز {iso('BTC')} مستوى {usd(self.disarm)} "
+                         f"(على بُعد {pc(100 * (self.disarm / btc - 1))})")
             else:
-                L.append(f"{R}🎯 توضع أوامر {iso('BTC')} عند {usd(self.arm)}، "
-                         f"والمسافة {pc(100 * (self.arm / btc - 1))}")
+                L.append(f"{R}🎯 تُوضَع أوامر {iso('BTC')} عند بلوغ السعر {usd(self.arm)} "
+                         f"(على بُعد {pc(100 * (self.arm / btc - 1))})")
             nxt = [lv for lv, _ in LEVELS if not st.lv(lv)["btc"].startswith("filled")]
             if nxt:
-                L.append(f"{R}📍 أقرب مستوى شراء: {usd(nxt[0])}، والمسافة {pc(100 * (nxt[0] / btc - 1))}")
-        L += [f"{R}💰 الميزانية: {usd(self.budget)}",
-              f"{R}   المُنفَق: {usd(spent)} بنسبة {iso(f'{100 * spent / self.budget:.0f}%')}",
+                L.append(f"{R}📍 أقرب مستويات الشراء: {usd(nxt[0])} (على بُعد {pc(100 * (nxt[0] / btc - 1))})")
+        L += [f"{R}💰 الميزانية الكلية: {usd(self.budget)}",
+              f"{R}   المستثمَر حتى الآن: {usd(spent)} ({iso(f'{100 * spent / self.budget:.0f}%')})",
               f"{R}   المتبقي: {usd(left)}",
-              "", R + "🪜 المستويات"]
+              "", R + "🪜 مستويات الشراء"]
         icons = {"waiting": "⏳", "placed": "📌", "placing": "📌", "filled": "✅", "filled (partial)": "🟡"}
-        words = {"waiting": "بالانتظار", "placed": "الأمر موضوع", "placing": "جارٍ وضع الأمر",
-                 "filled": "تم شراء " + iso("BTC"), "filled (partial)": "تم شراء جزء من " + iso("BTC")}
+        words = {"waiting": "لم يُبلَغ بعد", "placed": "أمر الشراء قائم", "placing": "جارٍ وضع الأمر",
+                 "filled": "اكتمل شراء " + iso("BTC"), "filled (partial)": "اكتمل شراء جزء من " + iso("BTC")}
         for lv, pct in LEVELS:
             s_ = st.lv(lv)
             b = s_["btc"]
             alts = ""
             if b.startswith("filled"):
-                alts = {"done": "، وتم شراء العملات البديلة", "in progress": "، وجارٍ شراء العملات البديلة",
-                        "waiting": "، والعملات البديلة بالانتظار"}.get(s_["alts"], "، العملات البديلة: " + iso(s_["alts"]))
-            L.append(f"{R}{icons.get(b, '⛔')} مستوى {usd(lv)} بمبلغ {usd(pct * self.budget)}: "
+                alts = {"done": " والعملات البديلة", "in progress": "، وجارٍ شراء العملات البديلة",
+                        "waiting": "، والعملات البديلة قيد الانتظار"}.get(s_["alts"], "، العملات البديلة: " + iso(s_["alts"]))
+            L.append(f"{R}{icons.get(b, '⛔')} عند {usd(lv)} بمبلغ {usd(pct * self.budget)}: "
                      f"{words.get(b, iso(b))}{alts}")
         held = [(c, f) for c, f in st.d["fills"].items() if f["qty"] > 0]
         if held:
-            L += ["", R + "🧾 المحفظة"]
+            L += ["", R + "🧾 المحفظة الحالية"]
             tot_cost = tot_val = 0.0
             for coin, f in held:
                 avg = f["cost"] / f["qty"]
@@ -414,19 +414,20 @@ class Bot:
                 val = f["qty"] * px
                 tot_cost += f["cost"]
                 tot_val += val
-                L.append(f"{R}• {iso(coin)}: التكلفة {usd(f['cost'])}، متوسط الشراء {iso(f'{avg:,.6g}')}، "
-                         f"السعر الحالي {iso(f'{px:,.6g}')}، النتيجة {pc(100 * (val / f['cost'] - 1))}")
-            L.append(f"{R}الإجمالي: التكلفة {usd(tot_cost)}، القيمة الحالية {usd(tot_val)}، "
-                     f"النتيجة {iso(f'{tot_val - tot_cost:+,.0f}$')} {pc(100 * (tot_val / tot_cost - 1))}")
+                L.append(f"{R}• {iso(coin)}: التكلفة {usd(f['cost'])}، ومتوسط سعر الشراء {iso(f'{avg:,.6g}')}، "
+                         f"والسعر الحالي {iso(f'{px:,.6g}')}، والربح/الخسارة {pc(100 * (val / f['cost'] - 1))}")
+            L.append(f"{R}📈 الإجمالي: التكلفة {usd(tot_cost)}، والقيمة الحالية {usd(tot_val)}، "
+                     f"والربح/الخسارة {iso(f'{tot_val - tot_cost:+,.0f}$')} ({pc(100 * (tot_val / tot_cost - 1))})")
         else:
-            L += ["", R + "🧾 المحفظة: لا توجد مشتريات بعد"]
+            L += ["", R + "🧾 المحفظة: لم تُنفَّذ أي عملية شراء حتى الآن"]
         L += [""] + self.balance_lines()
-        L += ["", f"{R}⚙️ القواعد: تُشترى العملات البديلة عند تنفيذ أمر {iso('BTC')}، إلا إذا ارتفعت العملة أكثر من "
-                  f"{iso(f'{100 * self.max_pump:.0f}%')} خلال ٢٤ ساعة، فيُحوَّل مبلغها إلى "
-                  f"{iso('60% BTC')} و{iso('40% ETH')}. لا يقوم البوت بأي عملية بيع."]
+        L += ["", f"{R}⚙️ آلية العمل: عند تنفيذ أمر {iso('BTC')} في أي مستوى تُشترى العملات البديلة المخصصة له، "
+                  f"وتُستثنى العملة التي ارتفعت أكثر من {iso(f'{100 * self.max_pump:.0f}%')} خلال ٢٤ ساعة، "
+                  f"فيُوزَّع مبلغها بنسبة {iso('60%')} على {iso('BTC')} و{iso('40%')} على {iso('ETH')}. "
+                  f"لا يُجري البوت أي عملية بيع."]
         if st.d.get("paused"):
-            L.append(R + "⏸ الشراء متوقف مؤقتًا. اضغط ▶️ استئناف الشراء")
-        L.append(R + "🕒 " + cairo_now())
+            L.append(R + "⏸ الشراء موقوف مؤقتًا، ولاستئنافه اضغط ▶️ استئناف الشراء")
+        L.append(R + "🕒 آخر تحديث: " + cairo_now())
         return "\n".join(L)
 
     def balance_lines(self):
@@ -435,28 +436,28 @@ class Bot:
         try:
             b = self.ex.balances()
         except Exception as e:
-            return [f"{R}🏦 الرصيد: تعذّر جلبه من {iso('OKX')} الآن"]
+            return [f"{R}🏦 الرصيد: تعذّر جلبه من {iso('OKX')} حاليًا"]
         if b is None:
-            return [f"{R}🏦 الرصيد: غير متاح في الوضع التجريبي، لعدم وجود مفتاح {iso('OKX')}",
-                    f"{R}   المبلغ اللازم لإكمال الخطة: {iso(f'{need:,.0f} USDT')}"]
+            return [f"{R}🏦 الرصيد: لا يتوفر في الوضع التجريبي لعدم ربط مفتاح {iso('OKX')}",
+                    f"{R}   المبلغ المطلوب لإتمام الخطة: {iso(f'{need:,.0f} USDT')}"]
         total = b["total_usd"]
         L = [f"{R}🏦 رصيد الحساب الفرعي: {iso(f'{total:,.2f}$')}"]
         usdt_free = usdt_frozen = 0.0
         for ccy, qty, usd_v, avail, frozen in b["coins"]:
             if ccy == "USDT":
                 usdt_free, usdt_frozen = avail, frozen
-                L.append(f"{R}• {iso('USDT')}: {iso(f'{qty:,.2f}')}، منها متاح {iso(f'{avail:,.2f}')} "
-                         f"ومحجوز في أوامر {iso(f'{frozen:,.2f}')}")
+                L.append(f"{R}• {iso('USDT')}: {iso(f'{qty:,.2f}')}، منها {iso(f'{avail:,.2f}')} متاحة "
+                         f"و{iso(f'{frozen:,.2f}')} محجوزة لأوامر قائمة")
             else:
-                L.append(f"{R}• {iso(ccy)}: {iso(fmt(round(qty, 8)))} بقيمة {iso(f'{usd_v:,.2f}$')} تقريبًا")
+                L.append(f"{R}• {iso(ccy)}: {iso(fmt(round(qty, 8)))} بقيمة تقارب {iso(f'{usd_v:,.2f}$')}")
         if not b["coins"]:
-            L.append(R + "• الحساب فارغ")
+            L.append(R + "• لا يوجد رصيد في الحساب")
         have = usdt_free + usdt_frozen
         if have + 0.5 < need:
-            L.append(f"{R}⚠️ رصيد {iso('USDT')} ({iso(f'{have:,.0f}')}) أقل من اللازم لإكمال الخطة "
-                     f"({iso(f'{need:,.0f}')}). يلزم تحويل {iso(f'{need - have:,.0f} USDT')}")
+            L.append(f"{R}⚠️ رصيد {iso('USDT')} ({iso(f'{have:,.0f}')}) أقل من المطلوب لإتمام الخطة "
+                     f"({iso(f'{need:,.0f}')})، ويلزم تحويل {iso(f'{need - have:,.0f} USDT')}")
         else:
-            L.append(f"{R}✔️ رصيد {iso('USDT')} يكفي لإكمال الخطة، واللازم {iso(f'{need:,.0f}')}")
+            L.append(f"{R}✔️ رصيد {iso('USDT')} كافٍ لإتمام الخطة (المطلوب {iso(f'{need:,.0f}')})")
         return L
 
     def once_alert(self, key, text):
@@ -472,24 +473,24 @@ class Bot:
         if not st.d["armed"] and btc <= self.arm and open_lv:
             need = sum(pct * self.budget * BTC_W for lv, pct in open_lv if st.lv(lv)["btc"] == "waiting")
             if st.d["spent"] + need > self.budget * 1.001:
-                self.once_alert("btc_budget", RLM + "⚠️ لم توضع أوامر " + iso("BTC") + " لأنها ستتجاوز الميزانية.")
+                self.once_alert("btc_budget", RLM + "⚠️ لم تُوضَع أوامر " + iso("BTC") + " لأنها تتجاوز الميزانية المحددة.")
                 return
             if ex.usdt() < need * 0.995:
                 st.d["unfunded"] = True
-                self.once_alert("btc_bal", f"{RLM}🚨 مشكلة: رصيد {iso('USDT')} غير كافٍ\n"
-                                           f"{RLM}سعر {iso('BTC')} الآن {iso(f'{btc:,.0f}$')}، أي دون {iso(f'{self.arm:,.0f}$')}، "
-                                           f"لكن الرصيد أقل من {iso(f'{need:,.2f} USDT')} اللازمة لأوامر {iso('BTC')}.\n"
-                                           f"{RLM}لم يوضع أي أمر. حوّل {iso('USDT')} إلى الحساب الفرعي، وستوضع الأوامر "
-                                           f"عند أسعار المستويات فقط، ولن يشتري البوت بسعر أعلى.")
+                self.once_alert("btc_bal", f"{RLM}🚨 تنبيه: رصيد {iso('USDT')} غير كافٍ\n"
+                                           f"{RLM}بلغ سعر {iso('BTC')} {iso(f'{btc:,.0f}$')}، أي دون حد التفعيل {iso(f'{self.arm:,.0f}$')}، "
+                                           f"غير أن الرصيد أقل من {iso(f'{need:,.2f} USDT')} اللازمة لأوامر {iso('BTC')}.\n"
+                                           f"{RLM}لم يُوضَع أي أمر. يُرجى تحويل {iso('USDT')} إلى الحساب الفرعي، وستُوضَع الأوامر "
+                                           f"عند أسعار المستويات فقط دون الشراء بأي سعر أعلى.")
                 for lv, pct in open_lv:
                     if btc <= lv:
-                        self.once_alert(f"miss{lv}", f"{RLM}🚨 مشكلة: فات مستوى {iso(f'{lv:,}$')}\n"
-                                                     f"{RLM}لمس {iso('BTC')} هذا المستوى ولم يكن هناك أمر بسبب نقص {iso('USDT')}.\n"
-                                                     f"{RLM}لن يُشترى لاحقًا بسعر أعلى، بل فقط إذا عاد {iso('BTC')} إلى "
+                        self.once_alert(f"miss{lv}", f"{RLM}🚨 تنبيه: فات مستوى {iso(f'{lv:,}$')}\n"
+                                                     f"{RLM}بلغ {iso('BTC')} هذا المستوى دون وجود أمر شراء بسبب نقص رصيد {iso('USDT')}.\n"
+                                                     f"{RLM}لن يُشترى هذا المستوى لاحقًا بسعر أعلى، وإنما فقط إذا عاد {iso('BTC')} إلى "
                                                      f"{iso(f'{lv:,}$')} بعد تحويل الرصيد.")
                 return
             if st.d.pop("unfunded", False):
-                self.tg.send(f"{RLM}✔️ وصل رصيد {iso('USDT')}. توضع أوامر {iso('BTC')} الآن عند أسعار المستويات فقط.")
+                self.tg.send(f"{RLM}✔️ توفّر رصيد {iso('USDT')}، وتُوضَع أوامر {iso('BTC')} الآن عند أسعار المستويات فقط.")
             st.d["arm_round"] += 1
             lot, mn, tick, _ = ex.inst("BTC-USDT")
             placed = []
@@ -507,15 +508,15 @@ class Bot:
                 ex.place_limit("BTC-USDT", lv, sz, s["btc_id"])
                 s["btc"] = "placed"
                 st.save()
-                placed.append(f"{RLM}• مستوى {iso(f'{lv:,}$')}: كمية {iso(fmt(sz) + ' BTC')} بقيمة "
+                placed.append(f"{RLM}• عند {iso(f'{lv:,}$')}: {iso(fmt(sz) + ' BTC')} بقيمة "
                               f"{iso(f'{sz * lv:,.2f}$')}")
             st.d["armed"] = True
             st.save()
-            where = "على " + iso("OKX") if ex.live else "(تجريبية)"
-            self.tg.send(f"{RLM}📌 تم وضع أوامر شراء {iso('BTC')} {where}\n"
-                         f"{RLM}السعر الآن {iso(f'{btc:,.0f}$')}، وهو دون {iso(f'{self.arm:,.0f}$')}.\n"
+            where = "على منصة " + iso("OKX") if ex.live else "(تجريبيًا)"
+            self.tg.send(f"{RLM}📌 وُضِعت أوامر شراء {iso('BTC')} {where}\n"
+                         f"{RLM}بلغ السعر {iso(f'{btc:,.0f}$')}، أي دون حد التفعيل {iso(f'{self.arm:,.0f}$')}.\n"
                          + "\n".join(placed) +
-                         f"\n{RLM}تُلغى الأوامر غير المنفذة إذا ارتفع {iso('BTC')} فوق {iso(f'{self.disarm:,.0f}$')}.")
+                         f"\n{RLM}تُلغى الأوامر غير المنفَّذة تلقائيًا إذا تجاوز {iso('BTC')} مستوى {iso(f'{self.disarm:,.0f}$')}.")
             return
         if not st.d["armed"]:
             return
@@ -529,19 +530,19 @@ class Bot:
                 s["btc"], s["btc_qty"], s["btc_cost"] = "filled", q, q * avg
                 st.add_fill("BTC", q, q * avg)
                 st.save()
-                self.tg.send(f"{RLM}✅ تم تنفيذ مستوى {iso(f'{lv:,}$')}\n"
-                             f"{RLM}اشترى البوت {iso(fmt(round(q, 8)) + ' BTC')} بسعر {iso(f'{avg:,.1f}$')} "
+                self.tg.send(f"{RLM}✅ نُفِّذ أمر الشراء عند مستوى {iso(f'{lv:,}$')}\n"
+                             f"{RLM}اشترى البوت {iso(fmt(round(q, 8)) + ' BTC')} بسعر {iso(f'{avg:,.1f}$')}، "
                              f"بقيمة {iso(f'{q * avg:,.2f}$')}.\n"
-                             f"{RLM}جارٍ شراء العملات البديلة الخاصة بهذا المستوى...")
+                             f"{RLM}يجري الآن شراء العملات البديلة المخصصة لهذا المستوى…")
             elif state in ("canceled", "missing", "mmp_canceled"):
                 s["btc"] = "waiting"
                 if q > 0:
                     s["btc"], s["btc_qty"], s["btc_cost"] = "filled (partial)", q, q * avg
                     st.add_fill("BTC", q, q * avg)
                 st.save()
-                self.tg.send(f"{RLM}⚠️ أمر {iso('BTC')} عند مستوى {iso(f'{lv:,}$')} لم يعد موجودًا على {iso('OKX')} "
+                self.tg.send(f"{RLM}⚠️ لم يعد أمر {iso('BTC')} عند مستوى {iso(f'{lv:,}$')} قائمًا على {iso('OKX')} "
                              f"{iso('(' + str(state) + ')')}.\n" + RLM +
-                             ("نُفذ جزء منه وتم احتسابه." if q > 0 else "سيوضع الأمر من جديد في المرة القادمة."))
+                             ("نُفِّذ جزء منه واحتُسب ضمن المشتريات." if q > 0 else "سيُوضَع الأمر مجددًا عند التفعيل القادم."))
         # disarm above the cancel price
         if btc >= self.disarm:
             for lv, pct in LEVELS:
@@ -558,9 +559,9 @@ class Bot:
                 st.save()
             st.d["armed"] = False
             st.save()
-            self.tg.send(f"{RLM}↩️ ارتفع {iso('BTC')} إلى {iso(f'{btc:,.0f}$')}، فوق {iso(f'{self.disarm:,.0f}$')}\n"
-                         f"{RLM}أُلغيت أوامر {iso('BTC')} غير المنفذة وتحرر رصيد {iso('USDT')}.\n"
-                         f"{RLM}ستوضع الأوامر من جديد عند {iso(f'{self.arm:,.0f}$')}.")
+            self.tg.send(f"{RLM}↩️ تجاوز {iso('BTC')} مستوى {iso(f'{self.disarm:,.0f}$')} (السعر الآن {iso(f'{btc:,.0f}$')})\n"
+                         f"{RLM}أُلغيت أوامر الشراء غير المنفَّذة، وأُعيد رصيد {iso('USDT')} المحجوز.\n"
+                         f"{RLM}ستُوضَع الأوامر مجددًا عند بلوغ السعر {iso(f'{self.arm:,.0f}$')}.")
 
     # ---- alts for a filled level
     def buy_now(self, coin, usd, tag):
@@ -585,7 +586,7 @@ class Bot:
     def ok_to_buy(self, coin):
         lot, mn, tick, live = self.ex.inst(f"{coin}-USDT")
         if not live:
-            return False, "التداول عليها متوقف على " + iso("OKX")
+            return False, "موقوفة عن التداول على " + iso("OKX")
         _, _, chg = self.ex.ticker(f"{coin}-USDT")
         if chg > self.max_pump:
             return False, "ارتفعت " + iso(f"+{100 * chg:.0f}%") + " خلال ٢٤ ساعة"
@@ -597,9 +598,9 @@ class Bot:
         if s["alts"] == "in progress":
             st.d["paused"] = True
             st.save()
-            self.tg.send(f"{RLM}🚨 مشكلة: توقف شراء العملات البديلة لمستوى {iso(f'{lv:,}$')} في منتصفه\n"
-                         f"{RLM}أوقف البوت الشراء احتياطيًا حتى لا يتكرر الشراء. راجع أوامر {iso('OKX')} ثم تواصل "
-                         f"لتعديل الحالة قبل الضغط على ▶️ استئناف الشراء.")
+            self.tg.send(f"{RLM}🚨 تنبيه: انقطع شراء العملات البديلة لمستوى {iso(f'{lv:,}$')} قبل اكتماله\n"
+                         f"{RLM}أوقف البوت الشراء احتياطيًا تفاديًا لتكرار أي عملية. يُرجى مراجعة الأوامر على {iso('OKX')}، "
+                         f"ثم تصحيح الحالة قبل الضغط على ▶️ استئناف الشراء.")
             return
         frac = 1.0
         if s["btc"] == "filled (partial)":
@@ -609,26 +610,26 @@ class Bot:
         if st.d["spent"] + need > self.budget * 1.001:
             s["alts"] = "skipped (budget)"
             st.save()
-            self.tg.send(f"{RLM}⚠️ لم تُشترَ العملات البديلة لمستوى {iso(f'{lv:,}$')} لأنها ستتجاوز الميزانية.")
+            self.tg.send(f"{RLM}⚠️ لم تُشترَ العملات البديلة لمستوى {iso(f'{lv:,}$')} لأنها تتجاوز الميزانية المحددة.")
             return
         ceiling = lv * (1 + self.alt_tol)
         if btc is not None and btc > ceiling:
-            self.once_alert(f"alt_far{lv}", f"{RLM}🚨 مشكلة: العملات البديلة لمستوى {iso(f'{lv:,}$')} لم تُشترَ\n"
-                                            f"{RLM}لم يتوفر رصيد {iso('USDT')} في حينه، وسعر {iso('BTC')} الآن "
+            self.once_alert(f"alt_far{lv}", f"{RLM}🚨 تنبيه: لم تُشترَ العملات البديلة لمستوى {iso(f'{lv:,}$')}\n"
+                                            f"{RLM}لم يتوفر رصيد {iso('USDT')} في حينه، وقد ارتفع {iso('BTC')} الآن إلى "
                                             f"{iso(f'{btc:,.0f}$')}، أي فوق {iso(f'{ceiling:,.0f}$')}.\n"
-                                            f"{RLM}لن تُشترى بأسعار اليوم، بل فقط إذا عاد {iso('BTC')} إلى "
+                                            f"{RLM}لن تُشترى بأسعار اليوم، وإنما فقط إذا عاد {iso('BTC')} إلى "
                                             f"{iso(f'{ceiling:,.0f}$')} أو أقل مع توفر الرصيد.")
             return
         if self.ex.usdt() < need * 0.995:
-            self.once_alert(f"alt_bal{lv}", f"{RLM}🚨 مشكلة: رصيد {iso('USDT')} لا يكفي للعملات البديلة\n"
-                                            f"{RLM}تم تنفيذ مستوى {iso(f'{lv:,}$')} لـ {iso('BTC')}، لكن الرصيد أقل من "
-                                            f"{iso(f'{need:,.2f} USDT')} اللازمة.\n"
-                                            f"{RLM}حوّل الرصيد الآن؛ ستُشترى العملات البديلة فقط ما دام {iso('BTC')} عند "
+            self.once_alert(f"alt_bal{lv}", f"{RLM}🚨 تنبيه: رصيد {iso('USDT')} لا يكفي للعملات البديلة\n"
+                                            f"{RLM}نُفِّذ أمر {iso('BTC')} عند مستوى {iso(f'{lv:,}$')}، غير أن الرصيد أقل من "
+                                            f"{iso(f'{need:,.2f} USDT')} المطلوبة.\n"
+                                            f"{RLM}يُرجى تحويل الرصيد فورًا؛ إذ لا تُشترى العملات البديلة إلا ما دام {iso('BTC')} عند "
                                             f"{iso(f'{ceiling:,.0f}$')} أو أقل.")
             return
         s["alts"] = "in progress"
         st.save()
-        report = [f"{RLM}🛒 شراء العملات البديلة - مستوى {iso(f'{lv:,}$')}" + ("" if self.ex.live else " (تجريبي)"),
+        report = [f"{RLM}🛒 شراء العملات البديلة لمستوى {iso(f'{lv:,}$')}" + ("" if self.ex.live else " (تجريبيًا)"),
                   f"{RLM}المبلغ المخصص: {iso(f'{need:,.2f}$')}"]
         backup_usd = 0.0
         for coin, w in ALTS:
@@ -636,13 +637,13 @@ class Bot:
             ok, why = self.ok_to_buy(coin)
             if not ok:
                 backup_usd += usd
-                report.append(f"{RLM}⏭ {iso(coin)}: لم تُشترَ لأنها {why}، وحُوِّل مبلغها {iso(f'{usd:,.2f}$')} للبديل")
+                report.append(f"{RLM}⏭ {iso(coin)}: استُبعدت لأنها {why}، وحُوِّل مبلغها ({iso(f'{usd:,.2f}$')}) إلى البديل")
                 continue
             q, c = self.buy_now(coin, usd, f"A{lv}")
             st.add_fill(coin, q, c)
             st.save()
-            miss = "" if c >= usd * 0.97 else f" ⚠️ نُفذ {iso(f'{c:,.2f}$')} فقط من {iso(f'{usd:,.2f}$')}"
-            report.append(f"{RLM}✅ {iso(coin)}: كمية {iso(fmt(round(q, 8)))} بسعر {iso(f'{c / q if q else 0:,.6g}')} "
+            miss = "" if c >= usd * 0.97 else f" ⚠️ نُفِّذ {iso(f'{c:,.2f}$')} فقط من أصل {iso(f'{usd:,.2f}$')}"
+            report.append(f"{RLM}✅ {iso(coin)}: {iso(fmt(round(q, 8)))} بسعر {iso(f'{c / q if q else 0:,.6g}')}، "
                           f"بقيمة {iso(f'{c:,.2f}$')}{miss}")
         if backup_usd > 0:
             eth_ok, _ = self.ok_to_buy("ETH")
@@ -653,10 +654,10 @@ class Bot:
                 q, c = self.buy_now(coin, usd, f"X{lv}")
                 st.add_fill(coin, q, c)
                 st.save()
-                report.append(f"{RLM}🔁 بديل {iso(coin)}: كمية {iso(fmt(round(q, 8)))} بسعر "
-                              f"{iso(f'{c / q if q else 0:,.6g}')} بقيمة {iso(f'{c:,.2f}$')}")
+                report.append(f"{RLM}🔁 البديل {iso(coin)}: {iso(fmt(round(q, 8)))} بسعر "
+                              f"{iso(f'{c / q if q else 0:,.6g}')}، بقيمة {iso(f'{c:,.2f}$')}")
             if not eth_ok:
-                report.append(f"{RLM}ℹ️ {iso('ETH')} لم يحقق الشرط أيضًا، فذهب البديل كله إلى {iso('BTC')}")
+                report.append(f"{RLM}ℹ️ لم يستوفِ {iso('ETH')} الشرط أيضًا، فخُصِّص مبلغ البديل كاملًا لـ {iso('BTC')}")
         s["alts"] = "done"
         st.save()
         self.tg.send("\n".join(report))
@@ -712,13 +713,13 @@ def main():
         return
     mode = "TEST REHEARSAL (paper, fake levels " + ", ".join(f"{lv:,.0f}" for lv, _ in LEVELS) + ")" if test \
         else ("LIVE" if live else "PAPER - no real orders")
-    head = "🚀 بدأ تشغيل بوت سلم السبوت" + (" - تجربة بمستويات افتراضية" if test else "")
+    head = "🚀 بدأ تشغيل بوت الشراء المتدرّج" + (" (تجربة بمستويات افتراضية)" if test else "")
     if acct:
         log("OKX " + os.environ.get("LADDER_SUBACCOUNT", "spoot") + ": " + acct)
-        head += f"\n{RLM}🔐 تم التحقق من الحساب الفرعي {iso(os.environ.get('LADDER_SUBACCOUNT', 'spoot'))}، والمفتاح بلا صلاحية سحب"
+        head += f"\n{RLM}🔐 تم التحقق من الحساب الفرعي {iso(os.environ.get('LADDER_SUBACCOUNT', 'spoot'))}، والمفتاح لا يملك صلاحية السحب"
     tg.send(bot.summary(ex.ticker("BTC-USDT")[0], head))
     # scheduled summaries, Cairo time; what was already sent is kept in the state (survives restarts)
-    SCHEDULE = [(8, "morning", "☀️ الملخص الصباحي - سلم السبوت"), (20, "evening", "🌙 الملخص المسائي - سلم السبوت")]
+    SCHEDULE = [(8, "morning", "☀️ الملخص الصباحي"), (20, "evening", "🌙 الملخص المسائي")]
     sent = st.d.setdefault("summaries_sent", {})
     t0 = cairo_dt()
     for hour, key, _ in SCHEDULE:            # don't fire a summary for a slot that already passed before start
@@ -728,11 +729,11 @@ def main():
         for cmd in tg.commands():
             if cmd == "/stop":
                 st.d["paused"] = True; st.save()
-                tg.send(RLM + "⏸ تم إيقاف الشراء مؤقتًا. لن يضع البوت أي أوامر جديدة ولن يشتري حتى تضغط ▶️ استئناف الشراء.\n"
-                        + RLM + "ملاحظة: أوامر " + iso("BTC") + " الموضوعة مسبقًا على " + iso("OKX") + " تبقى كما هي.")
+                tg.send(RLM + "⏸ أُوقِف الشراء مؤقتًا؛ لن يضع البوت أوامر جديدة ولن يُجري أي شراء حتى تضغط ▶️ استئناف الشراء.\n"
+                        + RLM + "ملاحظة: تبقى أوامر " + iso("BTC") + " القائمة على " + iso("OKX") + " كما هي.")
             elif cmd == "/resume":
                 st.d["paused"] = False; st.save()
-                tg.send(RLM + "▶️ تم استئناف الشراء.")
+                tg.send(RLM + "▶️ استُؤنِف الشراء.")
             elif cmd in ("/status", "/start"):
                 tg.send(bot.summary(ex.ticker("BTC-USDT")[0]))
 
@@ -750,7 +751,7 @@ def main():
                     tg.send(bot.summary(btc, title))
         except Exception as e:
             log(f"error: {e}")
-            bot.once_alert("last_err", f"{RLM}⚠️ خطأ في البوت: {iso(str(e)[:200])}")
+            bot.once_alert("last_err", f"{RLM}⚠️ حدث خطأ في البوت: {iso(str(e)[:200])}")
         for _ in range(12):                 # price every 60 s, buttons answered within ~5 s
             time.sleep(5)
             try:
