@@ -42,7 +42,7 @@ Safety
   - total spend can never exceed LADDER_BUDGET; short USDT -> the step waits and you get one alert
   - /stop on Telegram pauses everything new (resting BTC limits stay on OKX; cancel them there if you want)
 """
-import base64, hashlib, hmac, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
+import base64, hashlib, hmac, html, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timezone
 
 LEVELS = [(53000, 0.10), (52000, 0.15), (51000, 0.20), (50000, 0.25), (49000, 0.30)]
@@ -162,11 +162,54 @@ RAW_KEYS = {"icon", "state", "reason"}          # values that are Arabic text, n
 _LATIN = re.compile(r"(?<![{\w])(BTC|USDT|OKX|ETH|\d+%)(?![\w}])")
 
 
+def _ltr(text):
+    return _LATIN.sub(lambda m: iso(m.group(1)), text)
+
+
 def T(key, **kw):
-    """One Telegram line from TXT, right-to-left, Latin words and numbers kept left-to-right."""
-    tpl = _LATIN.sub(lambda m: iso(m.group(1)), TXT[key])
-    vals = {k: (v if k in RAW_KEYS else iso(v)) for k, v in kw.items()}
+    """One Telegram line from TXT (HTML-escaped), right-to-left, Latin words and numbers kept left-to-right."""
+    tpl = _ltr(html.escape(TXT[key], quote=False))
+    vals = {k: (v if k in RAW_KEYS else iso(html.escape(str(v), quote=False))) for k, v in kw.items()}
     return RLM + tpl.format(**vals)
+
+
+# ---- message layout (Telegram HTML): bold title, quoted body, items "first part" bold + " · " between parts
+def B(x):
+    return f"<b>{x}</b>"
+
+
+def I(x):
+    return f"<i>{x}</i>"
+
+
+def quote(lines, expandable=False):
+    lines = [l for l in lines if l is not None]
+    if not lines:
+        return ""
+    return ("<blockquote expandable>" if expandable else "<blockquote>") + "\n".join(lines) + "</blockquote>"
+
+
+def item(line, split=False):
+    """'• BTC | a | b' -> '• <b>BTC</b> · a · b' (split=True puts the details on a second line)."""
+    parts = line.split(" | ")
+    if len(parts) == 1:
+        return line
+    head = parts[0]
+    lead = head[:len(head) - len(head.lstrip(RLM + "•✅📌⏳🟡⛔🔁 "))]
+    head_txt = head[len(lead):]
+    first = lead + B(head_txt) if head_txt else lead
+    rest = " · ".join(parts[1:])
+    return first + ("\n" + RLM + "   " + rest if split else " · " + rest)
+
+
+def card(head, lines=(), expandable=False):
+    """Alert layout: bold first line, the rest in a quote block."""
+    return B(head) + ("\n" + quote(list(lines), expandable) if lines else "")
+
+
+def bar(frac, n=10):
+    k = max(0, min(n, round(frac * n)))
+    return "▰" * k + "▱" * (n - k)
 
 
 def money(x, d=0):
@@ -395,13 +438,22 @@ class TG:
         self.offset = None
 
     def send(self, text):
-        log("TG: " + text.replace("\n", " | "))
+        log("TG: " + re.sub(r"</?[a-z][^>]*>", "", text).replace("\n", " | "))
         if not (self.tok and self.chat):
             return
         try:
-            body = urllib.parse.urlencode({"chat_id": self.chat, "text": text,
-                                           "reply_markup": json.dumps(KEYBOARD)}).encode()
-            urllib.request.urlopen(f"https://api.telegram.org/bot{self.tok}/sendMessage", body, timeout=15).read()
+            data = {"chat_id": self.chat, "text": text, "parse_mode": "HTML",
+                    "link_preview_options": json.dumps({"is_disabled": True}),
+                    "reply_markup": json.dumps(KEYBOARD)}
+            url = f"https://api.telegram.org/bot{self.tok}/sendMessage"
+            try:
+                urllib.request.urlopen(url, urllib.parse.urlencode(data).encode(), timeout=15).read()
+            except urllib.error.HTTPError as e:
+                if e.code != 400:
+                    raise
+                data.pop("parse_mode")                       # formatting rejected -> send plain text
+                data["text"] = html.unescape(re.sub(r"</?[a-z][^>]*>", "", text))
+                urllib.request.urlopen(url, urllib.parse.urlencode(data).encode(), timeout=15).read()
         except Exception as e:
             log("telegram send failed: " + str(e).replace(self.tok, "<token>"))   # never print the token
 
@@ -476,22 +528,21 @@ class Bot:
     def summary(self, btc=None, title=None):
         st, live = self.st, self.ex.live
         spent = st.d["spent"]
-        L = [RLM + (title or TXT["t_summary"]), T("mode_live" if live else "mode_paper"), RLM + "━━━━━━━━━━━━━━"]
+        out = [B(RLM + (title or TXT["t_summary"])), I(T("mode_live" if live else "mode_paper"))]
         if btc:
-            L.append(T("btc_now", price=money(btc)))
-            if st.d["armed"]:
-                L.append(T("orders_open"))
-                L.append(T("cancel_above", disarm=money(self.disarm), pct=pct(100 * (self.disarm / btc - 1))))
-            else:
-                L.append(T("arm_at", arm=money(self.arm), pct=pct(100 * (self.arm / btc - 1))))
+            q = [T("orders_open"), T("cancel_above", disarm=money(self.disarm), pct=pct(100 * (self.disarm / btc - 1)))] \
+                if st.d["armed"] else [T("arm_at", arm=money(self.arm), pct=pct(100 * (self.arm / btc - 1)))]
             nxt = [lv for lv, _ in LEVELS if not st.lv(lv)["btc"].startswith("filled")]
             if nxt:
-                L.append(T("next_level", level=money(nxt[0]), pct=pct(100 * (nxt[0] / btc - 1))))
-        L += [T("budget", amount=money(self.budget)),
-              T("spent", amount=money(spent), pct=pct(100 * spent / self.budget, False)),
-              T("left", amount=money(self.budget - spent)),
-              "", T("levels_head")]
+                q.append(T("next_level", level=money(nxt[0]), pct=pct(100 * (nxt[0] / btc - 1))))
+            out += ["", B(T("btc_now", price=money(btc))), quote(q)]
+        frac = spent / self.budget if self.budget else 0
+        out += ["", B(T("budget", amount=money(self.budget))),
+                quote([T("spent", amount=money(spent), pct=pct(100 * frac, False)),
+                       T("left", amount=money(self.budget - spent)),
+                       RLM + bar(frac) + " " + iso(pct(100 * frac, False))])]
         icons = {"waiting": "⏳", "placed": "📌", "placing": "📌", "filled": "✅", "filled (partial)": "🟡"}
+        rows = []
         for lv, p in LEVELS:
             s_ = st.lv(lv)
             b, a = s_["btc"], s_["alts"]
@@ -502,14 +553,14 @@ class Bot:
             elif b in ("waiting", "placed", "placing"):
                 state = TXT["st_" + b]
             else:
-                state = iso(b)
-            state = _LATIN.sub(lambda m: iso(m.group(1)), state)
-            L.append(T("level_line", icon=icons.get(b, "⛔"), level=money(lv), amount=money(p * self.budget),
-                       state=state))
+                state = b
+            rows.append(item(T("level_line", icon=icons.get(b, "⛔"), level=money(lv), amount=money(p * self.budget),
+                                state=_ltr(html.escape(state, quote=False)))))
+        out += ["", B(T("levels_head")), quote(rows)]
         held = [(c, f) for c, f in st.d["fills"].items() if f["qty"] > 0]
-        L.append("")
+        out.append("")
         if held:
-            L.append(T("pf_head"))
+            rows = []
             tot_cost = tot_val = 0.0
             for coin, f in held:
                 avg = f["cost"] / f["qty"]
@@ -520,18 +571,20 @@ class Bot:
                 val = f["qty"] * px
                 tot_cost += f["cost"]
                 tot_val += val
-                L.append(T("pf_line", coin=coin, cost=money(f["cost"]), avg=f"{avg:,.6g}", price=f"{px:,.6g}",
-                           pct=pct(100 * (val / f["cost"] - 1))))
-            L.append(T("pf_total", cost=money(tot_cost), value=money(tot_val), pnl=f"{tot_val - tot_cost:+,.0f}$",
-                       pct=pct(100 * (tot_val / tot_cost - 1))))
+                rows.append(item(T("pf_line", coin=coin, cost=money(f["cost"]), avg=f"{avg:,.6g}", price=f"{px:,.6g}",
+                                   pct=pct(100 * (val / f["cost"] - 1))), split=True))
+            rows.append(item(T("pf_total", cost=money(tot_cost), value=money(tot_val), pnl=f"{tot_val - tot_cost:+,.0f}$",
+                               pct=pct(100 * (tot_val / tot_cost - 1))), split=True))
+            out += [B(T("pf_head")), quote(rows)]
         else:
-            L.append(T("pf_empty"))
-        L += [""] + self.balance_lines()
-        L += ["", T("rules", pct=pct(100 * self.max_pump, False))]
+            out.append(B(T("pf_empty")))
+        bal = self.balance_lines()
+        out += ["", B(bal[0]), quote([item(x) for x in bal[1:]])]
+        out += ["", quote([T("rules", pct=pct(100 * self.max_pump, False))], expandable=True)]
         if st.d.get("paused"):
-            L.append(T("paused"))
-        L.append(T("updated", time=cairo_dt().strftime("%Y-%m-%d %H:%M")))
-        return "\n".join(L)
+            out.append(B(T("paused")))
+        out.append(I(T("updated", time=cairo_dt().strftime("%Y-%m-%d %H:%M"))))
+        return "\n".join(x for x in out if x is not None)
 
     def balance_lines(self):
         need = max(0.0, self.budget - self.st.d["spent"])
@@ -575,18 +628,16 @@ class Bot:
                 return
             if ex.usdt() < need * 0.995:
                 st.d["unfunded"] = True
-                self.once_alert("btc_bal", "\n".join([
-                    T("nofund_head"),
+                self.once_alert("btc_bal", card(T("nofund_head"), [
                     T("nofund_body", price=money(btc), arm=money(self.arm), amount=f"{need:,.2f}"),
                     T("nofund_next")]))
                 for lv, pct in open_lv:
                     if btc <= lv:
-                        self.once_alert(f"miss{lv}", "\n".join([
-                            T("missed_head", level=money(lv)), T("missed_body"),
-                            T("missed_next", level=money(lv))]))
+                        self.once_alert(f"miss{lv}", card(T("missed_head", level=money(lv)), [
+                            T("missed_body"), T("missed_next", level=money(lv))]))
                 return
             if st.d.pop("unfunded", False):
-                self.tg.send(T("funded"))
+                self.tg.send(B(T("funded")))
             st.d["arm_round"] += 1
             lot, mn, tick, _ = ex.inst("BTC-USDT")
             placed = []
@@ -610,7 +661,7 @@ class Bot:
             msg = [T("placed_head") + ("" if ex.live else " (وضع تجريبي، دون أوامر حقيقية)")]
             msg += [T("placed_reason", price=money(btc), arm=money(self.arm))] + placed
             msg += [T("placed_cancel", disarm=money(self.disarm))]
-            self.tg.send("\n".join(msg))
+            self.tg.send(card(msg[0], [msg[1]] + [item(x) for x in msg[2:-1]] + [I(msg[-1])]))
             return
         if not st.d["armed"]:
             return
@@ -624,18 +675,16 @@ class Bot:
                 s["btc"], s["btc_qty"], s["btc_cost"] = "filled", q, q * avg
                 st.add_fill("BTC", q, q * avg)
                 st.save()
-                self.tg.send("\n".join([T("filled_head", level=money(lv)),
-                                        T("filled_body", qty=fmt(round(q, 8)), price=money(avg, 1),
-                                          amount=money(q * avg, 2)),
-                                        T("filled_next")]))
+                self.tg.send(card(T("filled_head", level=money(lv)), [
+                    T("filled_body", qty=fmt(round(q, 8)), price=money(avg, 1), amount=money(q * avg, 2)),
+                    I(T("filled_next"))]))
             elif state in ("canceled", "missing", "mmp_canceled"):
                 s["btc"] = "waiting"
                 if q > 0:
                     s["btc"], s["btc_qty"], s["btc_cost"] = "filled (partial)", q, q * avg
                     st.add_fill("BTC", q, q * avg)
                 st.save()
-                self.tg.send("\n".join([T("gone_head", level=money(lv)),
-                                        T("gone_partial" if q > 0 else "gone_again")]))
+                self.tg.send(card(T("gone_head", level=money(lv)), [T("gone_partial" if q > 0 else "gone_again")]))
         # disarm above the cancel price
         if btc >= self.disarm:
             for lv, pct in LEVELS:
@@ -652,8 +701,8 @@ class Bot:
                 st.save()
             st.d["armed"] = False
             st.save()
-            self.tg.send("\n".join([T("disarm_head", disarm=money(self.disarm), price=money(btc)),
-                                    T("disarm_body"), T("disarm_next", arm=money(self.arm))]))
+            self.tg.send(card(T("disarm_head", disarm=money(self.disarm), price=money(btc)),
+                              [T("disarm_body"), T("disarm_next", arm=money(self.arm))]))
 
     # ---- alts for a filled level
     def buy_now(self, coin, usd, tag):
@@ -690,7 +739,7 @@ class Bot:
         if s["alts"] == "in progress":
             st.d["paused"] = True
             st.save()
-            self.tg.send("\n".join([T("broken_head", level=money(lv)), T("broken_body")]))
+            self.tg.send(card(T("broken_head", level=money(lv)), [T("broken_body")]))
             return
         frac = 1.0
         if s["btc"] == "filled (partial)":
@@ -704,14 +753,12 @@ class Bot:
             return
         ceiling = lv * (1 + self.alt_tol)
         if btc is not None and btc > ceiling:
-            self.once_alert(f"alt_far{lv}", "\n".join([
-                T("altfar_head", level=money(lv)),
+            self.once_alert(f"alt_far{lv}", card(T("altfar_head", level=money(lv)), [
                 T("altfar_body", price=money(btc), ceiling=money(ceiling)),
                 T("altfar_next", ceiling=money(ceiling))]))
             return
         if self.ex.usdt() < need * 0.995:
-            self.once_alert(f"alt_bal{lv}", "\n".join([
-                T("altfund_head"), T("altfund_body", level=money(lv), amount=f"{need:,.2f}"),
+            self.once_alert(f"alt_bal{lv}", card(T("altfund_head"), [T("altfund_body", level=money(lv), amount=f"{need:,.2f}"),
                 T("altfund_next", ceiling=money(ceiling))]))
             return
         s["alts"] = "in progress"
@@ -748,7 +795,7 @@ class Bot:
                 report.append(T("backup_all_btc"))
         s["alts"] = "done"
         st.save()
-        self.tg.send("\n".join(report))
+        self.tg.send(card(report[0], [report[1]] + [item(x, split=True) for x in report[2:]]))
         try:
             self.tg.send(self.summary(btc, T("t_after_fill", level=money(lv))[1:]))
         except Exception as e:
@@ -817,10 +864,10 @@ def main():
         for cmd in tg.commands():
             if cmd == "/stop":
                 st.d["paused"] = True; st.save()
-                tg.send("\n".join([T("stopped"), T("stopped_note")]))
+                tg.send(card(T("stopped"), [T("stopped_note")]))
             elif cmd == "/resume":
                 st.d["paused"] = False; st.save()
-                tg.send(T("resumed"))
+                tg.send(B(T("resumed")))
             elif cmd in ("/status", "/start"):
                 tg.send(bot.summary(ex.ticker("BTC-USDT")[0]))
 
