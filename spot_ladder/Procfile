@@ -1,0 +1,1 @@
+worker: python spot_ladder.py
