@@ -183,10 +183,13 @@ def I(x):
 
 
 def quote(lines, expandable=False):
+    """Plain lines (old-bot style: one fact per line). Only the long rules text is a collapsible quote."""
     lines = [l for l in lines if l is not None]
     if not lines:
         return ""
-    return ("<blockquote expandable>" if expandable else "<blockquote>") + "\n".join(lines) + "</blockquote>"
+    if expandable:
+        return "<blockquote expandable>" + "\n".join(lines) + "</blockquote>"
+    return "\n".join(lines)
 
 
 def item(line, split=False):
@@ -198,13 +201,25 @@ def item(line, split=False):
     lead = head[:len(head) - len(head.lstrip(RLM + "•✅📌⏳🟡⛔🔁 "))]
     head_txt = head[len(lead):]
     first = lead + B(head_txt) if head_txt else lead
-    rest = " · ".join(parts[1:])
-    return first + ("\n" + RLM + "   " + rest if split else " · " + rest)
+    rest = " | ".join(parts[1:])
+    return first + ("\n" + RLM + "      " + rest if split else " | " + rest)
+
+
+def coin_block(line, pnl):
+    """Portfolio: '• BTC | cost | avg | now | pnl' -> 3 short lines with a green/red dot."""
+    parts = line.split(" | ")
+    if len(parts) < 5:
+        return item(line, split=True)
+    dot = "🟢" if pnl >= 0 else "🔴"
+    name = parts[0].replace("•", "").strip(RLM + " ")
+    pad = "\n" + RLM + "      "
+    return f"{RLM}{dot} {B(name)} | {parts[4]}{pad}{parts[1]} | {parts[2]}{pad}{parts[3]}"
 
 
 def card(head, lines=(), expandable=False):
     """Alert layout: bold first line, the rest in a quote block."""
-    return B(head) + ("\n" + quote(list(lines), expandable) if lines else "")
+    lines = [l for l in lines if l]
+    return B(head) + ("\n\n" + "\n".join(lines) if lines else "")
 
 
 def bar(frac, n=10):
@@ -571,8 +586,9 @@ class Bot:
                 val = f["qty"] * px
                 tot_cost += f["cost"]
                 tot_val += val
-                rows.append(item(T("pf_line", coin=coin, cost=money(f["cost"]), avg=f"{avg:,.6g}", price=f"{px:,.6g}",
-                                   pct=pct(100 * (val / f["cost"] - 1))), split=True))
+                rows.append(coin_block(T("pf_line", coin=coin, cost=money(f["cost"]), avg=f"{avg:,.6g}",
+                                         price=f"{px:,.6g}", pct=pct(100 * (val / f["cost"] - 1))), val - f["cost"]))
+            rows.append("")
             rows.append(item(T("pf_total", cost=money(tot_cost), value=money(tot_val), pnl=f"{tot_val - tot_cost:+,.0f}$",
                                pct=pct(100 * (tot_val / tot_cost - 1))), split=True))
             out += [B(T("pf_head")), quote(rows)]
