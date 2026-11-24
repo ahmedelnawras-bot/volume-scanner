@@ -955,7 +955,7 @@ def main():
     # was the bot down? (last heartbeat saved in the state)
     now_ts = time.time()
     last_alive = st.d.get("alive")
-    if last_alive and now_ts - last_alive > 600:
+    if last_alive and now_ts - last_alive > 1800:                       # down more than 30 min
         since = cairo_dt(last_alive).strftime("%Y-%m-%d %H:%M")
         until = cairo_dt().strftime("%Y-%m-%d %H:%M")
         tg.send(card(T("down_head"), [T("down_body", since=since, until=until,
@@ -994,8 +994,9 @@ def main():
             handle_commands()
             btc = ex.ticker("BTC-USDT")[0]
             nowt = time.time()
-            st.d["alive"] = nowt
-            st.save()
+            if nowt - st.d.get("alive", 0) >= 600:                      # heartbeat: one small write per 10 min
+                st.d["alive"] = nowt
+                st.save()
             if live and (not key_ok or nowt - last_key_check > 1800):    # key check every 30 min
                 last_key_check = nowt
                 try:
