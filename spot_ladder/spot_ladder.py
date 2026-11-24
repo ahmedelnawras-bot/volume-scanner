@@ -94,9 +94,9 @@ class OKX:
     def __init__(self, live):
         self.live = live
         # keys of the OKX SUB-ACCOUNT only - deliberately different names from the main bot's OKX_API_KEY
-        self.key = os.environ.get("LADDER_OKX_API_KEY", "")
-        self.secret = os.environ.get("LADDER_OKX_API_SECRET", "")
-        self.pp = os.environ.get("LADDER_OKX_API_PASSPHRASE", "")
+        self.key = os.environ.get("LADDER_OKX_API_KEY", "").strip()
+        self.secret = os.environ.get("LADDER_OKX_API_SECRET", "").strip()
+        self.pp = os.environ.get("LADDER_OKX_API_PASSPHRASE", "").strip()
         if live and not (self.key and self.secret and self.pp):
             raise SystemExit("LADDER_LIVE=true but LADDER_OKX_API_KEY / LADDER_OKX_API_SECRET / "
                              "LADDER_OKX_API_PASSPHRASE (sub-account key) are missing")
@@ -233,8 +233,9 @@ class OKX:
 class TG:
     def __init__(self):
         # its own Telegram bot first (LADDER_TELEGRAM_*), the old bot's variables only as a fallback
-        self.tok = os.environ.get("LADDER_TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        self.chat = os.environ.get("LADDER_TELEGRAM_CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID", "")
+        # .strip(): a pasted value often carries a hidden newline/space, which breaks the Telegram URL
+        self.tok = (os.environ.get("LADDER_TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN", "")).strip()
+        self.chat = (os.environ.get("LADDER_TELEGRAM_CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
         self.offset = None
 
     def send(self, text):
@@ -245,7 +246,7 @@ class TG:
             body = urllib.parse.urlencode({"chat_id": self.chat, "text": text}).encode()
             urllib.request.urlopen(f"https://api.telegram.org/bot{self.tok}/sendMessage", body, timeout=15).read()
         except Exception as e:
-            log(f"telegram send failed: {e}")
+            log("telegram send failed: " + str(e).replace(self.tok, "<token>"))   # never print the token
 
     def commands(self):
         if not (self.tok and self.chat):
