@@ -8,7 +8,11 @@
                                      # today's BTC price, so you see the whole flow on Telegram in hours
 
 Plan (agreed 2026-11-24)
-  budget 2,590 USDT; BTC levels 53.4k 10% / 52.6k 15% / 51k 20% / 50.15k 25% / 49.2k 30% of the budget
+  plan size = spent + USDT in the sub-account, min 500 / max 4,000 (agreed 2026-11-25): under 500 no orders
+             (alert); above 4,000 the rest stays USDT. Set when the limits go in; if more USDT arrives while limits
+             are open, the unfilled limits are re-placed bigger at the SAME prices; all available cash is split over
+             the levels not bought yet by their weights.
+  BTC levels 53.4k 10% / 52.6k 15% / 51k 20% / 50.15k 25% / 49.2k 30% of the plan
   split per level: BTC 30, ETH 20, ADA 20, LINK 10, NEAR 10, PEPE 10 (%)
   BTC part : when BTC <= 55,000 the bot places resting LIMIT buys at the 5 levels (a quick wick still fills).
              If BTC goes back >= 65,000, unfilled limits are cancelled (USDT freed) and re-placed at 55k again.
@@ -35,7 +39,7 @@ Settings (environment variables, or KEY=VALUE lines in extra.env / .env next to 
   LADDER_TELEGRAM_BOT_TOKEN / LADDER_TELEGRAM_CHAT_ID its own Telegram bot (falls back to TELEGRAM_BOT_TOKEN /
                                TELEGRAM_CHAT_ID); reports, buttons, summaries at 08:00 and 20:00 Cairo
   REDIS_URL (or LADDER_REDIS_URL)  on Railway: keep the state in Redis so restarts/redeploys lose nothing
-  LADDER_BUDGET=2590  LADDER_ARM=55000  LADDER_DISARM=65000  LADDER_MAX_PUMP=0.10  LADDER_MAX_SLIPPAGE=0.005
+  LADDER_MIN_BUDGET=500  LADDER_MAX_BUDGET=4000  LADDER_PAPER_BALANCE=2590 (paper only)  LADDER_ARM=55000  LADDER_DISARM=65000  LADDER_MAX_PUMP=0.10  LADDER_MAX_SLIPPAGE=0.005
   LADDER_STATE                 default ladder_state.json (live) / ladder_state_paper.json (paper)
 
 Safety
@@ -96,7 +100,10 @@ TXT = {
     "cancel_above": "↩️ يلغي البوت الأوامر المفتوحة إذا ارتفع BTC فوق {disarm} (الفارق عن السعر الحالي: {pct})",
     "arm_at": "🎯 يضع البوت أوامر شراء BTC عند وصول السعر إلى {arm} (الفارق عن السعر الحالي: {pct})",
     "next_level": "📍 أقرب مستوى شراء: {level} (الفارق عن السعر الحالي: {pct})",
-    "budget": "💰 إجمالي ميزانية الخطة: {amount}",
+    "budget": "💰 حجم الخطة: {amount}",
+    "budget_est": "💰 حجم الخطة المتوقع حسب الرصيد الحالي: {amount}",
+    "budget_low": "💰 رصيد USDT الحالي أقل من الحد الأدنى للخطة ({min})",
+    "budget_rule": "يُحسب حجم الخطة من رصيد USDT في الحساب الفرعي، بحد أدنى {min} وحد أقصى {max}.",
     "spent": "إجمالي المشتريات حتى الآن: {amount} ({pct} من الميزانية)",
     "left": "المتبقي من الميزانية: {amount}",
     "levels_head": "🪜 مستويات الشراء",
@@ -116,8 +123,9 @@ TXT = {
     "bal_usdt": "• USDT: {qty} | المتاح: {free} | المحجوز للأوامر المفتوحة: {frozen}",
     "bal_coin": "• {coin}: {qty} | القيمة التقريبية: {amount}",
     "bal_empty": "• لا يوجد رصيد في الحساب الفرعي",
-    "bal_ok": "✔️ رصيد USDT يكفي لإكمال الخطة. المبلغ المطلوب: {amount}",
-    "bal_short": "⚠️ رصيد USDT أقل من المطلوب لإكمال الخطة | الرصيد: {have} | المطلوب: {need} | المبلغ الناقص: {gap} USDT",
+    "bal_ok": "✔️ رصيد USDT كافٍ. حجم الخطة: {amount}",
+    "bal_short": "⚠️ رصيد USDT أقل من الحد الأدنى للخطة | الرصيد: {have} | الحد الأدنى: {need} | المبلغ الناقص: {gap} USDT",
+    "bal_extra": "ℹ️ الرصيد يزيد عن الحد الأقصى للخطة، والمبلغ الزائد ({amount}) لن يُستخدم.",
     "bal_paper": "🏦 رصيد الحساب غير متاح في الوضع التجريبي لأن مفتاح OKX غير مربوط",
     "bal_paper_need": "المطلوب لإكمال الخطة: {amount} USDT",
     "bal_error": "🏦 تعذّر جلب رصيد الحساب من OKX الآن",
@@ -128,6 +136,7 @@ TXT = {
     "updated": "🕒 آخر تحديث: {time} بتوقيت القاهرة",
     "placed_head": "📌 وضع البوت أوامر شراء BTC على OKX",
     "placed_reason": "وصل سعر BTC إلى {price}، وهو أقل من سعر التفعيل {arm}.",
+    "placed_plan": "حجم الخطة: {amount}، محسوبًا من رصيد USDT في الحساب الفرعي.",
     "placed_line": "• المستوى {level} | الكمية: {qty} BTC | قيمة الأمر: {amount}",
     "placed_cancel": "يلغي البوت الأوامر التي لم تُنفّذ تلقائيًا إذا ارتفع BTC فوق {disarm}.",
     "filled_head": "✅ تم تنفيذ أمر الشراء عند مستوى {level}",
@@ -175,8 +184,13 @@ TXT = {
     "down_next": "عاد البوت للعمل الآن. راجع الملخص للتأكد من حالة الأوامر.",
     "near_head": "⚡ اقترب سعر BTC من سعر التفعيل",
     "near_body": "سعر BTC الآن {price}، ويبعد {pct} عن سعر التفعيل {arm}.",
-    "near_ok": "✔️ رصيد USDT جاهز: {have} من أصل {need} مطلوبة لإكمال الخطة.",
-    "near_short": "⚠️ رصيد USDT غير كافٍ: {have} من أصل {need} مطلوبة. حوّل المبلغ الناقص ({gap} USDT) قبل وصول السعر.",
+    "near_ok": "✔️ رصيد USDT جاهز: {have}. حجم الخطة سيكون {need}.",
+    "near_short": "⚠️ رصيد USDT أقل من الحد الأدنى للخطة: {have} من أصل {need}. حوّل {gap} USDT على الأقل قبل وصول السعر.",
+    "min_head": "🚨 رصيد USDT أقل من الحد الأدنى للخطة",
+    "min_body": "وصل BTC إلى {price}، وهو أقل من سعر التفعيل {arm}. الرصيد المتاح للخطة {have} USDT، والحد الأدنى {min} USDT.",
+    "min_next": "لم يضع البوت أي أمر. حوّل {gap} USDT على الأقل إلى الحساب الفرعي، وسيضع البوت الأوامر عند أسعار المستويات المحددة فقط.",
+    "resized_head": "🔄 زاد رصيد USDT، فكبّر البوت أوامر الشراء المفتوحة",
+    "resized_body": "حجم الخطة الآن {amount}. الأسعار كما هي، والذي تغيّر هو الكميات فقط.",
     "near_paper": "الوضع التجريبي: لا يوجد رصيد حقيقي للتحقق منه.",
     "key_head": "🔑 مفتاح OKX لا يعمل",
     "key_body": "رفضت OKX مفتاح الربط ({reason}). قد يكون انتهى بعد ١٤ يومًا من عدم النشاط، أو حُذف، أو تغيّرت بياناته.",
@@ -452,6 +466,14 @@ class OKX:
         det = d[0].get("details", []) if d else []
         return float(det[0].get("availBal") or 0) if det else 0.0
 
+    def usdt_total(self):
+        """Live: all USDT in the sub-account (free + held by open orders). Paper: None."""
+        if not self.live:
+            return None
+        d = self._req("GET", "/api/v5/account/balance", {"ccy": "USDT"}, signed=True)
+        det = d[0].get("details", []) if d else []
+        return float(det[0].get("eq") or det[0].get("cashBal") or 0) if det else 0.0
+
     def find(self, inst, cl_id):
         try:
             d = self._req("GET", "/api/v5/trade/order", {"instId": inst, "clOrdId": cl_id}, signed=True)
@@ -626,11 +648,46 @@ class State:
 
 
 class Bot:
-    def __init__(self, ex, st, tg, budget=2590.0, arm=55000.0, disarm=65000.0, max_pump=0.10, slip=0.005,
-                 alt_tol=0.02):
+    def __init__(self, ex, st, tg, paper_cash=2590.0, arm=55000.0, disarm=65000.0, max_pump=0.10, slip=0.005,
+                 alt_tol=0.02, min_plan=500.0, max_plan=4000.0):
         self.ex, self.st, self.tg = ex, st, tg
         self.alt_tol = alt_tol
-        self.budget, self.arm, self.disarm, self.max_pump, self.slip = budget, arm, disarm, max_pump, slip
+        self.paper_cash, self.arm, self.disarm, self.max_pump, self.slip = paper_cash, arm, disarm, max_pump, slip
+        self.min_plan, self.max_plan = min_plan, max_plan
+        self.resize_every, self._last_resize = 300, 0.0
+
+    # ---- plan size: from the USDT in the sub-account, clamped to [min_plan, max_plan]
+    def cash_total(self):
+        v = self.ex.usdt_total()
+        if v is None:                                    # paper: a pretend balance
+            return max(0.0, self.paper_cash - self.st.d["spent"])
+        return v
+
+    def alloc_of(self, lv, pct):
+        """Money for one level (BTC + alts). Set when its limit is placed; before that: share of the plan."""
+        a = self.st.lv(lv).get("alloc")
+        return a if a else pct * self.st.d.get("plan", self.paper_cash)
+
+    def alt_need(self, lv, pct):
+        s = self.st.lv(lv)
+        a = self.alloc_of(lv, pct)
+        frac = 1.0
+        if s["btc"] == "filled (partial)":
+            target = a * BTC_W
+            frac = min(1.0, s["btc_cost"] / target) if target else 0.0
+        return a * (1 - BTC_W) * frac, frac
+
+    def plan_now(self):
+        """(plan size, {level: money}) for the levels not bought yet - all available USDT, split by their weights."""
+        st = self.st
+        spent = st.d["spent"]
+        pending = sum(self.alt_need(lv, p)[0] for lv, p in LEVELS
+                      if st.lv(lv)["btc"].startswith("filled") and st.lv(lv)["alts"] in ("waiting", "in progress"))
+        plan = min(self.max_plan, spent + self.cash_total())
+        open_lv = [(lv, p) for lv, p in LEVELS if st.lv(lv)["btc"] in ("waiting", "placed", "placing")]
+        wsum = sum(p for _, p in open_lv)
+        avail = max(0.0, plan - spent - pending)
+        return plan, {lv: avail * p / wsum for lv, p in open_lv} if wsum else {}
 
     # ---- summary
     def summary(self, btc=None, title=None):
@@ -644,11 +701,22 @@ class Bot:
             if nxt:
                 q.append(T("next_level", level=money(nxt[0]), pct=pct(100 * (nxt[0] / btc - 1))))
             out += ["", self.btc_line(btc), quote(q)]
-        frac = spent / self.budget if self.budget else 0
-        out += ["", B(T("budget", amount=money(self.budget))),
+        if st.d["armed"] or spent > 0:
+            plan, head = st.d.get("plan", spent), T("budget", amount=money(st.d.get("plan", spent)))
+        else:
+            try:
+                plan = self.plan_now()[0]
+            except Exception:
+                plan = st.d.get("plan", self.min_plan)
+            head = T("budget_est", amount=money(plan)) if plan >= self.min_plan else \
+                T("budget_low", min=money(self.min_plan))
+        frac = spent / plan if plan else 0
+        out += ["", B(head),
                 quote([T("spent", amount=money(spent), pct=pct(100 * frac, False)),
-                       T("left", amount=money(self.budget - spent)),
-                       RLM + bar(frac) + " " + iso(pct(100 * frac, False))])]
+                       T("left", amount=money(max(0.0, plan - spent))),
+                       RLM + bar(frac) + " " + iso(pct(100 * frac, False)),
+                       I(T("budget_rule", min=money(self.min_plan), max=money(self.max_plan)))])]
+        show_plan = max(plan, self.min_plan)
         icons = {"waiting": "⏳", "placed": "📌", "placing": "📌", "filled": "✅", "filled (partial)": "🟡"}
         rows = []
         for lv, p in LEVELS:
@@ -662,7 +730,7 @@ class Bot:
                 state = TXT["st_" + b]
             else:
                 state = b
-            rows.append(item(T("level_line", icon=icons.get(b, "⛔"), level=money(lv), amount=money(p * self.budget),
+            rows.append(item(T("level_line", icon=icons.get(b, "⛔"), level=money(lv), amount=money(s_.get("alloc") or p * show_plan),
                                 state=_ltr(html.escape(state, quote=False)))))
         out += ["", B(T("levels_head")), quote(rows)]
         held = [(c, f) for c, f in st.d["fills"].items() if f["qty"] > 0]
@@ -705,13 +773,13 @@ class Bot:
         return line
 
     def balance_lines(self):
-        need = max(0.0, self.budget - self.st.d["spent"])
+        spent = self.st.d["spent"]
         try:
             b = self.ex.balances()
         except Exception:
             return [T("bal_error")]
         if b is None:
-            return [T("bal_paper"), T("bal_paper_need", amount=f"{need:,.0f}")]
+            return [T("bal_paper"), T("bal_paper_need", amount=f"{max(0.0, self.paper_cash - spent):,.0f}")]
         L = [T("bal_total", amount=money(b["total_usd"], 2))]
         usdt_free = usdt_frozen = 0.0
         for ccy, qty, usd_v, avail, frozen in b["coins"]:
@@ -723,10 +791,13 @@ class Bot:
         if not b["coins"]:
             L.append(T("bal_empty"))
         have = usdt_free + usdt_frozen
-        if have + 0.5 < need:
+        if spent + have + 0.5 < self.min_plan:
+            need = self.min_plan - spent
             L.append(T("bal_short", have=f"{have:,.0f}", need=f"{need:,.0f}", gap=f"{need - have:,.0f}"))
         else:
-            L.append(T("bal_ok", amount=f"{need:,.0f}"))
+            L.append(T("bal_ok", amount=money(min(self.max_plan, spent + have))))
+            if spent + have > self.max_plan + 0.5:
+                L.append(T("bal_extra", amount=money(spent + have - self.max_plan)))
         return L
 
     def once_alert(self, key, text):
@@ -740,10 +811,20 @@ class Bot:
         st, ex = self.st, self.ex
         open_lv = [(lv, pct) for lv, pct in LEVELS if st.lv(lv)["btc"] in ("waiting", "placed")]
         if not st.d["armed"] and btc <= self.arm and open_lv:
-            need = sum(pct * self.budget * BTC_W for lv, pct in open_lv if st.lv(lv)["btc"] == "waiting")
-            if st.d["spent"] + need > self.budget * 1.001:
-                self.once_alert("btc_budget", T("budget_btc"))
+            plan, alloc = self.plan_now()
+            if plan < self.min_plan:
+                st.d["unfunded"] = True
+                have = max(0.0, plan - st.d["spent"])
+                self.once_alert("btc_min", card(T("min_head"), [
+                    T("min_body", price=money(btc), arm=money(self.arm), have=f"{have:,.0f}",
+                      min=f"{self.min_plan:,.0f}"),
+                    T("min_next", gap=f"{self.min_plan - plan:,.0f}")]))
+                for lv, pct in open_lv:
+                    if btc <= lv:
+                        self.once_alert(f"miss{lv}", card(T("missed_head", level=money(lv)), [
+                            T("missed_body"), T("missed_next", level=money(lv))]))
                 return
+            need = sum(alloc[lv] * BTC_W for lv, pct in open_lv if st.lv(lv)["btc"] == "waiting")
             if ex.usdt() < need * 0.995:
                 st.d["unfunded"] = True
                 self.once_alert("btc_bal", card(T("nofund_head"), [
@@ -763,7 +844,8 @@ class Bot:
                 s = st.lv(lv)
                 if s["btc"] != "waiting":
                     continue
-                sz = floor_to(pct * self.budget * BTC_W / lv, lot)
+                s["alloc"] = alloc[lv]
+                sz = floor_to(alloc[lv] * BTC_W / lv, lot)
                 if sz < mn:
                     s["btc"], s["alts"] = "skipped (size)", s["alts"]
                     continue
@@ -775,9 +857,12 @@ class Bot:
                 st.save()
                 placed.append(T("placed_line", level=money(lv), qty=fmt(sz), amount=money(sz * lv, 2)))
             st.d["armed"] = True
+            st.d["plan"] = plan
+            self._last_resize = time.time()
             st.save()
             msg = [T("placed_head") + ("" if ex.live else " (وضع تجريبي، دون أوامر حقيقية)")]
-            msg += [T("placed_reason", price=money(btc), arm=money(self.arm))] + placed
+            msg += [T("placed_reason", price=money(btc), arm=money(self.arm)) + "\n" +
+                    T("placed_plan", amount=money(plan))] + placed
             msg += [T("placed_cancel", disarm=money(self.disarm))]
             self.tg.send(card(msg[0], [msg[1]] + [item(x) for x in msg[2:-1]] + [I(msg[-1])]))
             return
@@ -803,6 +888,10 @@ class Bot:
                     st.add_fill("BTC", q, q * avg)
                 st.save()
                 self.tg.send(card(T("gone_head", level=money(lv)), [T("gone_partial" if q > 0 else "gone_again")]))
+        # more USDT arrived while orders are open -> bigger orders at the SAME prices
+        if btc < self.disarm and time.time() - self._last_resize >= self.resize_every:
+            self._last_resize = time.time()
+            self.resize()
         # disarm above the cancel price
         if btc >= self.disarm:
             for lv, pct in LEVELS:
@@ -821,6 +910,41 @@ class Bot:
             st.save()
             self.tg.send(card(T("disarm_head", disarm=money(self.disarm), price=money(btc)),
                               [T("disarm_body"), T("disarm_next", arm=money(self.arm))]))
+
+    def resize(self):
+        st, ex = self.st, self.ex
+        plan, alloc = self.plan_now()
+        grow = [(lv, alloc[lv]) for lv, _ in LEVELS if st.lv(lv)["btc"] == "placed" and lv in alloc
+                and alloc[lv] > st.lv(lv).get("alloc", 0) * 1.05 and alloc[lv] - st.lv(lv).get("alloc", 0) >= 10]
+        if not grow:
+            return
+        extra = sum((a - st.lv(lv).get("alloc", 0)) * BTC_W for lv, a in grow)
+        if ex.usdt() < extra * 0.995:
+            return
+        lot, mn, tick, _ = ex.inst("BTC-USDT")
+        lines = []
+        for lv, a in grow:
+            s = st.lv(lv)
+            ex.cancel("BTC-USDT", s["btc_id"])
+            state, q, avg = ex.limit_state("BTC-USDT", s["btc_id"], None)
+            if q > 0:                                   # it (partly) filled meanwhile: keep that, don't re-place
+                s["btc"], s["btc_qty"], s["btc_cost"] = ("filled" if state == "filled" else "filled (partial)"), q, q * avg
+                st.add_fill("BTC", q, q * avg)
+                st.save()
+                continue
+            sz = floor_to(a * BTC_W / lv, lot)
+            s["resize_n"] = s.get("resize_n", 0) + 1
+            s["btc_id"] = f"B{lv}r{st.d['arm_round']}u{s['resize_n']}"
+            s["btc"], s["alloc"] = "placing", a
+            st.save()
+            ex.place_limit("BTC-USDT", lv, sz, s["btc_id"])
+            s["btc"] = "placed"
+            st.save()
+            lines.append(item(T("placed_line", level=money(lv), qty=fmt(sz), amount=money(sz * lv, 2))))
+        st.d["plan"] = plan
+        st.save()
+        if lines:
+            self.tg.send(card(T("resized_head"), [T("resized_body", amount=money(plan))] + lines))
 
     # ---- alts for a filled level
     def buy_now(self, coin, usd, tag):
@@ -859,12 +983,8 @@ class Bot:
             st.save()
             self.tg.send(card(T("broken_head", level=money(lv)), [T("broken_body")]))
             return
-        frac = 1.0
-        if s["btc"] == "filled (partial)":
-            target = pct * self.budget * BTC_W
-            frac = min(1.0, s["btc_cost"] / target) if target else 0.0
-        need = pct * self.budget * (1 - BTC_W) * frac
-        if st.d["spent"] + need > self.budget * 1.001:
+        need, frac = self.alt_need(lv, pct)
+        if st.d["spent"] + need > self.max_plan * 1.001:
             s["alts"] = "skipped (budget)"
             st.save()
             self.tg.send(T("budget_alts", level=money(lv)))
@@ -885,7 +1005,7 @@ class Bot:
                   T("alts_amount", amount=money(need, 2))]
         backup_usd = 0.0
         for coin, w in ALTS:
-            usd = pct * self.budget * w * frac
+            usd = self.alloc_of(lv, pct) * w * frac
             ok, why = self.ok_to_buy(coin)
             if not ok:
                 backup_usd += usd
@@ -930,14 +1050,15 @@ class Bot:
         if btc <= self.arm * 1.03 and not st.d.get("near_sent"):
             st.d["near_sent"] = True
             st.save()
-            need = max(0.0, self.budget - st.d["spent"])
             lines = [T("near_body", price=money(btc), pct=pct(100 * (self.arm / btc - 1)), arm=money(self.arm))]
             if not self.ex.live:
                 lines.append(T("near_paper"))
             else:
                 try:
-                    have = self.ex.usdt()
-                    lines.append(T("near_ok", have=f"{have:,.0f}", need=f"{need:,.0f}") if have + 0.5 >= need else
+                    have = self.ex.usdt_total()
+                    plan = min(self.max_plan, st.d["spent"] + have)
+                    need = max(0.0, self.min_plan - st.d["spent"])
+                    lines.append(T("near_ok", have=f"{have:,.0f}", need=money(plan)) if plan >= self.min_plan else
                                  T("near_short", have=f"{have:,.0f}", need=f"{need:,.0f}", gap=f"{need - have:,.0f}"))
                 except Exception:
                     lines.append(T("bal_error"))
@@ -1006,8 +1127,9 @@ def main():
             tg.send(card(T("refused_head"), [T("refused_body", reason=str(e)[:200])]))
             while True:
                 time.sleep(3600)
-    bot = Bot(ex, st, tg, g("LADDER_BUDGET", 2590), arm, disarm,
-              g("LADDER_MAX_PUMP", 0.10), g("LADDER_MAX_SLIPPAGE", 0.005))
+    bot = Bot(ex, st, tg, g("LADDER_PAPER_BALANCE", g("LADDER_BUDGET", 2590)), arm, disarm,
+              g("LADDER_MAX_PUMP", 0.10), g("LADDER_MAX_SLIPPAGE", 0.005),
+              min_plan=g("LADDER_MIN_BUDGET", 500), max_plan=g("LADDER_MAX_BUDGET", 4000))
     if "--status" in sys.argv:
         print(bot.summary(ex.ticker("BTC-USDT")[0]))
         return
@@ -1150,9 +1272,13 @@ def selftest():
             return sz, px
 
         bal = float("inf")
+        st_ref = None                            # set -> balance goes down as the bot spends
 
         def usdt(self):
-            return self.bal
+            return self.bal - (self.st_ref.d["spent"] if self.st_ref else 0)
+
+        def usdt_total(self):
+            return None if self.bal == float("inf") else self.usdt()
 
     d = tempfile.mkdtemp()
     tg = TG(); tg.tok = ""
@@ -1199,7 +1325,7 @@ def selftest():
     assert BUTTONS[BTN_ON_NOW] == "/mode" and BUTTONS["⏸ إيقاف الشراء"] == "/stop"
     st.d["paused"] = True
     # budget cap
-    st2 = State(os.path.join(d, "s2.json")); st2.d["spent"] = 2500
+    st2 = State(os.path.join(d, "s2.json")); st2.d["spent"] = 3800
     b2 = Bot(ex, st2, tg)
     s = st2.lv(49200); s["btc"] = "filled"
     b2.alt_step(49200, 0.30)
@@ -1225,10 +1351,44 @@ def selftest():
     assert any("ينتظر البوت عودة" in t for t in sent)
     go3(53800)                                     # back within +2% -> alts bought
     assert st3.lv(53400)["alts"] == "done" and "ADA" in st3.d["fills"]
+    # ---- plan size follows the balance (min 500, max 4000)
+    def fresh(name, bal):
+        e = Fake(); e.bal = bal
+        s_ = State(os.path.join(d, name)); e.st_ref = s_
+        out = []
+        t_ = TG(); t_.tok = ""; t_.send = lambda t: out.append(t)
+        b_ = Bot(e, s_, t_); b_.resize_every = 0
+        return e, s_, b_, out
+    e4, s4, b4, out4 = fresh("s4.json", 300.0)
+    e4.px["BTC"] = 54000; b4.tick(54000)
+    assert not s4.d["armed"] and any("الحد الأدنى" in t for t in out4), "below 500 must not arm"
+    e4.bal = 1000.0; b4.tick(54000)
+    assert s4.d["armed"] and abs(s4.d["plan"] - 1000) < 1 and abs(s4.lv(53400)["alloc"] - 100) < 0.5
+    e4.px["BTC"] = 53300; b4.tick(53300)            # level 1 fills, alts bought from its 100
+    assert s4.lv(53400)["alts"] == "done" and 95 < s4.d["spent"] < 101, s4.d["spent"]
+    old_id = s4.lv(52600)["btc_id"]
+    e4.bal = 3000.0 + s4.d["spent"] - 100           # he adds 2,000 (cash now ~2,900)
+    b4.tick(53300)
+    a2 = s4.lv(52600)["alloc"]                      # 2,900 * 15/90 = 483 (way 1: all the cash, remaining levels)
+    assert abs(a2 - 2900 * 0.15 / 0.90) < 2 and s4.lv(52600)["btc_id"] != old_id, (a2, s4.lv(52600))
+    assert e4.paper_limits[s4.lv(52600)["btc_id"]][1] == 52600, "resize must keep the price"
+    assert e4.paper_limits[old_id][3] == "canceled"
+    assert any("كبّر البوت" in t for t in out4)
+    n_msgs = len(out4); b4.tick(53300); assert len(out4) == n_msgs, "no resize when nothing changed"
+    e5, s5, b5, out5 = fresh("s5.json", 10000.0)
+    e5.px["BTC"] = 54000; b5.tick(54000)
+    assert abs(s5.d["plan"] - 4000) < 1 and abs(s5.lv(53400)["alloc"] - 400) < 0.5, "cap at 4,000"
+    e5.px["BTC"] = 48000; b5.tick(48000); b5.tick(48000)
+    assert 3900 < s5.d["spent"] <= 4000.5, s5.d["spent"]
+    e6, s6, b6, out6 = fresh("s6.json", 500.0)
+    e6.px["BTC"] = 48000; b6.tick(48000); b6.tick(48000)
+    assert all(s6.lv(lv)["alts"] == "done" for lv, _ in LEVELS) and 490 < s6.d["spent"] <= 500.5, s6.d["spent"]
     print()
     print(bot.summary(48000))
     print("\nSELFTEST OK: limits placed at 55k, wick fill, alts bought once, ADA pump -> 60/40 BTC/ETH backup, "
-          "ETH pump -> backup all BTC, halted coin skipped, cancel at 65k and re-place at 55k, budget cap, crash pause, NO-MONEY: missed level alerted, no buy after bounce, limits only at levels, alts wait for BTC <= level+2%")
+          "ETH pump -> backup all BTC, halted coin skipped, cancel at 65k and re-place at 55k, budget cap, crash pause, NO-MONEY: missed level alerted, no buy after bounce, limits only at levels, alts wait for BTC <= level+2%, "
+          "PLAN SIZE: under 500 no orders, 1,000 -> 100 at level 1, +2,000 later -> open limits resized at the same "
+          "prices over the remaining levels, 10,000 -> capped at 4,000, 500 -> all levels and alts filled")
 
 
 if __name__ == "__main__":
