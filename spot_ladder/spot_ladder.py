@@ -8,7 +8,7 @@
                                      # today's BTC price, so you see the whole flow on Telegram in hours
 
 Plan (agreed 2026-11-24)
-  budget 2,590 USDT; BTC levels 53k 10% / 52k 15% / 51k 20% / 50k 25% / 49k 30% of the budget
+  budget 2,590 USDT; BTC levels 53.4k 10% / 52.6k 15% / 51k 20% / 50.15k 25% / 49.2k 30% of the budget
   split per level: BTC 30, ETH 20, ADA 20, LINK 10, NEAR 10, PEPE 10 (%)
   BTC part : when BTC <= 55,000 the bot places resting LIMIT buys at the 5 levels (a quick wick still fills).
              If BTC goes back >= 65,000, unfilled limits are cancelled (USDT freed) and re-placed at 55k again.
@@ -47,7 +47,10 @@ Safety
 import base64, hashlib, hmac, html, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timezone
 
-LEVELS = [(53000, 0.10), (52000, 0.15), (51000, 0.20), (50000, 0.25), (49000, 0.30)]
+# levels sit just ABOVE the supports so a bounce off the support still fills them (agreed 2026-11-25):
+# 53,400 over the Jul-2024 low 53,269 | 52,600 over the Sep-2024 low 52,529 | 51,000 unchanged |
+# 50,150 over the round 50,000 | 49,200 over the Aug-2024 low 48,935 and the round 49,000
+LEVELS = [(53400, 0.10), (52600, 0.15), (51000, 0.20), (50150, 0.25), (49200, 0.30)]
 BTC_W = 0.30
 ALTS = [("ETH", 0.20), ("ADA", 0.20), ("LINK", 0.10), ("NEAR", 0.10), ("PEPE", 0.10)]
 BACKUP = [("BTC", 0.60), ("ETH", 0.40)]
@@ -1108,18 +1111,18 @@ def selftest():
     go(55000); assert st.d["armed"] and all(st.lv(lv)["btc"] == "placed" for lv, _ in LEVELS)
     ex.chg["ADA"] = 0.15                         # ADA pumping -> backup
     go(52900)                                    # wick through 53k
-    assert st.lv(53000)["btc"] == "filled" and st.lv(53000)["alts"] == "done"
-    assert st.lv(52000)["btc"] == "placed"
+    assert st.lv(53400)["btc"] == "filled" and st.lv(53400)["alts"] == "done"
+    assert st.lv(52600)["btc"] == "placed"
     assert "ADA" not in st.d["fills"], "ADA must be skipped"
     eth_after_53 = st.d["fills"]["ETH"]["cost"]
     assert abs(eth_after_53 - (259 * 0.20 + 259 * 0.20 * 0.40)) < 1.5, eth_after_53
     go(66000)                                    # bounce above 65k -> cancel
-    assert not st.d["armed"] and st.lv(52000)["btc"] == "waiting"
+    assert not st.d["armed"] and st.lv(52600)["btc"] == "waiting"
     ex.chg["ADA"] = 0.0
     ex.chg["ETH"] = 0.12; ex.dead.add("NEAR")    # ETH pumping + NEAR halted -> all backup to BTC
     go(54000); assert st.d["armed"]
     go(51900)
-    assert st.lv(52000)["alts"] == "done" and st.lv(51000)["btc"] == "placed"
+    assert st.lv(52600)["alts"] == "done" and st.lv(51000)["btc"] == "placed"
     ex.chg = {}; ex.dead = set()
     go(48000)
     assert all(st.lv(lv)["btc"] == "filled" and st.lv(lv)["alts"] == "done" for lv, _ in LEVELS), st.d["levels"]
@@ -1127,15 +1130,15 @@ def selftest():
     ids = ex.iocs
     assert len(ids) == len(set(ids)), "duplicate client ids"
     # restart safety: interrupted alt step pauses
-    st.lv(53000)["alts"] = "in progress"
-    bot.alt_step(53000, 0.10)
+    st.lv(53400)["alts"] = "in progress"
+    bot.alt_step(53400, 0.10)
     assert st.d["paused"]
     # budget cap
     st2 = State(os.path.join(d, "s2.json")); st2.d["spent"] = 2500
     b2 = Bot(ex, st2, tg)
-    s = st2.lv(49000); s["btc"] = "filled"
-    b2.alt_step(49000, 0.30)
-    assert st2.lv(49000)["alts"].startswith("skipped"), "budget cap"
+    s = st2.lv(49200); s["btc"] = "filled"
+    b2.alt_step(49200, 0.30)
+    assert st2.lv(49200)["alts"].startswith("skipped"), "budget cap"
     # ---- no money scenarios
     sent = []
     tg3 = TG(); tg3.tok = ""; tg3.send = lambda t: sent.append(t)
@@ -1144,19 +1147,19 @@ def selftest():
     def go3(p):
         ex3.px["BTC"] = p; b3.tick(p)
     go3(52800)                                     # under 53k, no USDT
-    assert not st3.d["armed"] and any("دون تنفيذ الشراء" in t and "53,000" in t for t in sent), sent
+    assert not st3.d["armed"] and any("دون تنفيذ الشراء" in t and "53,400" in t for t in sent), sent
     go3(56500); ex3.bal = 5000.0; go3(56500)        # bounced, money added -> must NOT place/buy
     assert not st3.d["armed"] and "BTC" not in st3.d["fills"], "bought after bounce!"
     go3(54500)                                     # back under 55k -> limits at level prices only
     assert st3.d["armed"] and "BTC" not in st3.d["fills"], "54.5k must not fill a 53k limit"
     ex3.bal = 0.0; go3(52950)                      # 53k fills, but no USDT for alts
-    assert st3.lv(53000)["btc"] == "filled" and st3.lv(53000)["alts"] == "waiting"
+    assert st3.lv(53400)["btc"] == "filled" and st3.lv(53400)["alts"] == "waiting"
     assert any("لا يكفي لشراء العملات البديلة" in t for t in sent)
     go3(54500); ex3.bal = 5000.0; go3(54500)       # bounced above 53k+2%, money added -> no alt buy
-    assert st3.lv(53000)["alts"] == "waiting" and "ADA" not in st3.d["fills"], "alts bought at higher price!"
+    assert st3.lv(53400)["alts"] == "waiting" and "ADA" not in st3.d["fills"], "alts bought at higher price!"
     assert any("ينتظر البوت عودة" in t for t in sent)
     go3(53800)                                     # back within +2% -> alts bought
-    assert st3.lv(53000)["alts"] == "done" and "ADA" in st3.d["fills"]
+    assert st3.lv(53400)["alts"] == "done" and "ADA" in st3.d["fills"]
     print()
     print(bot.summary(48000))
     print("\nSELFTEST OK: limits placed at 55k, wick fill, alts bought once, ADA pump -> 60/40 BTC/ETH backup, "
