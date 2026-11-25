@@ -39,7 +39,7 @@ Settings (environment variables, or KEY=VALUE lines in extra.env / .env next to 
   LADDER_TELEGRAM_BOT_TOKEN / LADDER_TELEGRAM_CHAT_ID its own Telegram bot (falls back to TELEGRAM_BOT_TOKEN /
                                TELEGRAM_CHAT_ID); reports, buttons, summaries at 08:00 and 20:00 Cairo
   REDIS_URL (or LADDER_REDIS_URL)  on Railway: keep the state in Redis so restarts/redeploys lose nothing
-  LADDER_MIN_BUDGET=500  LADDER_MAX_BUDGET=4000  LADDER_PAPER_BALANCE=2590 (paper only)  LADDER_ARM=55000  LADDER_DISARM=65000  LADDER_MAX_PUMP=0.10  LADDER_MAX_SLIPPAGE=0.005
+  LADDER_BASE_BUDGET=2600 (shown on every message)  LADDER_MIN_BUDGET=500  LADDER_MAX_BUDGET=4000  LADDER_PAPER_BALANCE=2590 (paper only)  LADDER_ARM=55000  LADDER_DISARM=65000  LADDER_MAX_PUMP=0.10  LADDER_MAX_SLIPPAGE=0.005
   LADDER_STATE                 default ladder_state.json (live) / ladder_state_paper.json (paper)
 
 Safety
@@ -79,6 +79,12 @@ TXT = {
     "btn_off_now": "⏸ متوقف ✓",
     "status_on": "🟢 الشراء مفعّل",
     "status_off": "⏸ الشراء متوقف مؤقتًا",
+    "base_line": "💼 الميزانية الأساسية {base} | حجم الخطة الآن {plan} | {diff}",
+    "base_low": "💼 الميزانية الأساسية {base} | الرصيد أقل من الحد الأدنى للخطة ({min})",
+    "diff_below": "أقل بـ {pct}",
+    "diff_above": "أعلى بـ {pct}",
+    "diff_above_max": "أعلى بـ {pct} (الحد الأقصى)",
+    "diff_same": "مطابق للخطة ✅",
     "stop_confirm": "هل تريد إيقاف الشراء مؤقتًا؟",
     "stop_confirm_note": "لن يرسل البوت أوامر شراء جديدة حتى تضغط «▶️ تشغيل».",
     "yes_stop": "نعم، أوقف",
@@ -216,7 +222,7 @@ BUTTONS = {BTN_STATUS: "/status", BTN_STOP: "/stop", BTN_RESUME: "/resume",
            BTN_ON_NOW: "/mode", BTN_OFF_NOW: "/mode",               # pressing the ✓ button just reports the mode
            # older labels, in case Telegram still shows an old keyboard
            "📊 عرض الملخص": "/status", "⏸ إيقاف الشراء": "/stop", "▶️ استئناف الشراء": "/resume"}
-RAW_KEYS = {"icon", "state", "reason", "dot"}          # values that are Arabic text, not numbers/Latin
+RAW_KEYS = {"icon", "state", "reason", "dot", "diff"}          # values that are Arabic text, not numbers/Latin
 _LATIN = re.compile(r"(?<![{A-Za-z0-9_])(BTC|USDT|OKX|ETH|\d+%)(?![A-Za-z0-9_}])")
 
 
@@ -544,11 +550,18 @@ class TG:
         self.chat = (os.environ.get("LADDER_TELEGRAM_CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
         self.offset = None
         self.paused_fn = None                    # set in main(): lambda -> True when buying is paused
+        self.plan_fn = None                      # set in main(): lambda -> "base budget vs plan" line
 
     def status_line(self):
         if self.paused_fn is None:
             return ""
-        return B(T("status_off" if self.paused_fn() else "status_on"))
+        line = B(T("status_off" if self.paused_fn() else "status_on"))
+        if self.plan_fn is not None:
+            try:
+                line += "\n" + self.plan_fn()
+            except Exception as e:
+                log(f"plan line failed: {e}")
+        return line
 
     def send(self, text, inline=None):
         """Every message starts with the buying status. inline = [[(label, callback_data), ...]] buttons."""
@@ -655,6 +668,8 @@ class Bot:
         self.paper_cash, self.arm, self.disarm, self.max_pump, self.slip = paper_cash, arm, disarm, max_pump, slip
         self.min_plan, self.max_plan = min_plan, max_plan
         self.resize_every, self._last_resize = 300, 0.0
+        self.base_budget = 2600.0                       # the plan's original size, shown on every message
+        self._pl_cache = (0.0, None)
 
     # ---- plan size: from the USDT in the sub-account, clamped to [min_plan, max_plan]
     def cash_total(self):
@@ -676,6 +691,29 @@ class Bot:
             target = a * BTC_W
             frac = min(1.0, s["btc_cost"] / target) if target else 0.0
         return a * (1 - BTC_W) * frac, frac
+
+    def plan_line(self):
+        """'base 2,600 | plan now X | below/above by Y%' - every message, right under the status line."""
+        st = self.st
+        if st.d["armed"]:
+            plan = st.d.get("plan", st.d["spent"])
+        else:
+            ts, cached = self._pl_cache
+            if cached is None or time.time() - ts > 60:
+                cached = self.plan_now()[0]
+                self._pl_cache = (time.time(), cached)
+            plan = cached
+        base = money(self.base_budget)
+        if plan < self.min_plan:
+            return T("base_low", base=base, min=money(self.min_plan))
+        d = 100 * (plan / self.base_budget - 1)
+        if abs(d) < 1:
+            diff = T("diff_same")
+        elif d < 0:
+            diff = T("diff_below", pct=f"{-d:.1f}%")
+        else:
+            diff = T("diff_above_max" if plan >= self.max_plan - 0.5 else "diff_above", pct=f"{d:.1f}%")
+        return T("base_line", base=base, plan=money(plan), diff=diff.lstrip(RLM))
 
     def plan_now(self):
         """(plan size, {level: money}) for the levels not bought yet - all available USDT, split by their weights."""
@@ -1130,6 +1168,8 @@ def main():
     bot = Bot(ex, st, tg, g("LADDER_PAPER_BALANCE", g("LADDER_BUDGET", 2590)), arm, disarm,
               g("LADDER_MAX_PUMP", 0.10), g("LADDER_MAX_SLIPPAGE", 0.005),
               min_plan=g("LADDER_MIN_BUDGET", 500), max_plan=g("LADDER_MAX_BUDGET", 4000))
+    bot.base_budget = g("LADDER_BASE_BUDGET", 2600)
+    tg.plan_fn = bot.plan_line                        # 2nd line of every message: base budget vs plan now
     if "--status" in sys.argv:
         print(bot.summary(ex.ticker("BTC-USDT")[0]))
         return
@@ -1380,6 +1420,16 @@ def selftest():
     assert abs(s5.d["plan"] - 4000) < 1 and abs(s5.lv(53400)["alloc"] - 400) < 0.5, "cap at 4,000"
     e5.px["BTC"] = 48000; b5.tick(48000); b5.tick(48000)
     assert 3900 < s5.d["spent"] <= 4000.5, s5.d["spent"]
+    lines = {}
+    for bal in (0, 1800, 2600, 3200, 10000):
+        e7, s7, b7, _ = fresh(f"s7_{bal}.json", float(bal))
+        lines[bal] = b7.plan_line()
+    assert "أقل من الحد الأدنى" in lines[0] and "2,600" in lines[0]
+    assert "أقل بـ" in lines[1800] and "30.8%" in lines[1800], lines[1800]
+    assert "مطابق" in lines[2600] and "أعلى بـ" in lines[3200] and "23.1%" in lines[3200]
+    assert "الحد الأقصى" in lines[10000] and "53.8%" in lines[10000], lines[10000]
+    tgx = TG(); tgx.paused_fn = lambda: False; tgx.plan_fn = lambda: lines[1800]
+    assert tgx.status_line().count("\n") == 1 and "30.8%" in tgx.status_line()
     e6, s6, b6, out6 = fresh("s6.json", 500.0)
     e6.px["BTC"] = 48000; b6.tick(48000); b6.tick(48000)
     assert all(s6.lv(lv)["alts"] == "done" for lv, _ in LEVELS) and 490 < s6.d["spent"] <= 500.5, s6.d["spent"]
