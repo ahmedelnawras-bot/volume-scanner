@@ -68,9 +68,20 @@ def iso(x):
 # {name} = a value filled in by the bot. Latin words (BTC, USDT, OKX, ETH) and percentages are kept
 # left-to-right automatically inside the Arabic lines.
 TXT = {
-    "btn_status": "📊 عرض الملخص",
-    "btn_stop": "⏸ إيقاف الشراء",
-    "btn_resume": "▶️ استئناف الشراء",
+    "btn_status": "📊 الملخص",
+    "btn_stop": "⏸ إيقاف",
+    "btn_resume": "▶️ تشغيل",
+    "btn_on_now": "🟢 مفعّل ✓",
+    "btn_off_now": "⏸ متوقف ✓",
+    "status_on": "🟢 الشراء مفعّل",
+    "status_off": "⏸ الشراء متوقف مؤقتًا",
+    "stop_confirm": "هل تريد إيقاف الشراء مؤقتًا؟",
+    "stop_confirm_note": "لن يرسل البوت أوامر شراء جديدة حتى تضغط «▶️ تشغيل».",
+    "yes_stop": "نعم، أوقف",
+    "cancel": "إلغاء",
+    "stop_cancelled": "لم يتغيّر شيء، والشراء ما زال مفعّلًا.",
+    "already_on": "الشراء مفعّل بالفعل.",
+    "already_off": "الشراء متوقف بالفعل. للتشغيل اضغط «▶️ تشغيل».",
     "t_summary": "📊 ملخص خطة الشراء المتدرّج",
     "t_morning": "☀️ ملخص الصباح",
     "t_evening": "🌙 ملخص المساء",
@@ -113,7 +124,7 @@ TXT = {
     "rules": "⚙️ بعد تنفيذ أمر شراء BTC عند أي مستوى، يشتري البوت العملات البديلة المخصصة لهذا المستوى. "
              "إذا ارتفع سعر إحدى العملات بأكثر من {pct} خلال آخر ٢٤ ساعة، يستبعدها البوت ويوزّع المبلغ المخصص لها: "
              "60% لشراء BTC و40% لشراء ETH. البوت ينفّذ عمليات شراء فقط.",
-    "paused": "⏸ الشراء متوقف مؤقتًا. للمتابعة، اضغط «▶️ استئناف الشراء».",
+    "paused": "⏸ الشراء متوقف مؤقتًا. للمتابعة، اضغط «▶️ تشغيل».",
     "updated": "🕒 آخر تحديث: {time} بتوقيت القاهرة",
     "placed_head": "📌 وضع البوت أوامر شراء BTC على OKX",
     "placed_reason": "وصل سعر BTC إلى {price}، وهو أقل من سعر التفعيل {arm}.",
@@ -155,7 +166,7 @@ TXT = {
     "budget_btc": "⚠️ لم يضع البوت أوامر شراء BTC لأن قيمتها تتجاوز الميزانية المحددة.",
     "budget_alts": "⚠️ لم يشترِ البوت العملات البديلة لمستوى {level} لأن تكلفة الشراء تتجاوز الميزانية المحددة.",
     "error": "⚠️ حدث خطأ في البوت: {error}",
-    "stopped": "⏸ تم إيقاف الشراء مؤقتًا. لن يرسل البوت أي أوامر شراء جديدة حتى تضغط «▶️ استئناف الشراء».",
+    "stopped": "⏸ تم إيقاف الشراء مؤقتًا. لن يرسل البوت أي أوامر شراء جديدة حتى تضغط «▶️ تشغيل».",
     "stopped_note": "📌 أوامر شراء BTC المفتوحة على OKX تظل نشطة، وقد تُنفّذ أثناء الإيقاف المؤقت.",
     "resumed": "▶️ تم استئناف الشراء.",
     # --- added 2026-11-25: bot down, approaching the trigger, API key, targets
@@ -177,10 +188,20 @@ TXT = {
     "target_body": "هذا أحد أهداف الخطة. البوت لا يبيع تلقائيًا، والقرار لك.",
 }
 BTN_STATUS, BTN_STOP, BTN_RESUME = TXT["btn_status"], TXT["btn_stop"], TXT["btn_resume"]
-KEYBOARD = {"keyboard": [[{"text": BTN_STATUS}], [{"text": BTN_STOP}, {"text": BTN_RESUME}]],
-            "resize_keyboard": True, "is_persistent": True}
+BTN_ON_NOW, BTN_OFF_NOW = TXT["btn_on_now"], TXT["btn_off_now"]
+
+
+def keyboard(paused):
+    """3 small buttons in one row; the button of the current mode carries a ✓."""
+    row = [BTN_STATUS, BTN_OFF_NOW, BTN_RESUME] if paused else [BTN_STATUS, BTN_STOP, BTN_ON_NOW]
+    return {"keyboard": [[{"text": x} for x in row]], "resize_keyboard": True, "is_persistent": True}
+
+
+KEYBOARD = keyboard(False)
 BUTTONS = {BTN_STATUS: "/status", BTN_STOP: "/stop", BTN_RESUME: "/resume",
-           "📊 الملخص": "/status"}               # old button label, in case Telegram still shows it
+           BTN_ON_NOW: "/mode", BTN_OFF_NOW: "/mode",               # pressing the ✓ button just reports the mode
+           # older labels, in case Telegram still shows an old keyboard
+           "📊 عرض الملخص": "/status", "⏸ إيقاف الشراء": "/stop", "▶️ استئناف الشراء": "/resume"}
 RAW_KEYS = {"icon", "state", "reason", "dot"}          # values that are Arabic text, not numbers/Latin
 _LATIN = re.compile(r"(?<![{A-Za-z0-9_])(BTC|USDT|OKX|ETH|\d+%)(?![A-Za-z0-9_}])")
 
@@ -500,15 +521,27 @@ class TG:
         self.tok = (os.environ.get("LADDER_TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN", "")).strip()
         self.chat = (os.environ.get("LADDER_TELEGRAM_CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
         self.offset = None
+        self.paused_fn = None                    # set in main(): lambda -> True when buying is paused
 
-    def send(self, text):
+    def status_line(self):
+        if self.paused_fn is None:
+            return ""
+        return B(T("status_off" if self.paused_fn() else "status_on"))
+
+    def send(self, text, inline=None):
+        """Every message starts with the buying status. inline = [[(label, callback_data), ...]] buttons."""
+        sl = self.status_line()
+        if sl:
+            text = sl + "\n\n" + text
         log("TG: " + re.sub(r"</?[a-z][^>]*>", "", text).replace("\n", " | "))
         if not (self.tok and self.chat):
             return
         try:
             data = {"chat_id": self.chat, "text": text, "parse_mode": "HTML",
                     "link_preview_options": json.dumps({"is_disabled": True}),
-                    "reply_markup": json.dumps(KEYBOARD)}
+                    "reply_markup": json.dumps(
+                        {"inline_keyboard": [[{"text": t, "callback_data": c} for t, c in r] for r in inline]}
+                        if inline else keyboard(bool(self.paused_fn and self.paused_fn())))}
             url = f"https://api.telegram.org/bot{self.tok}/sendMessage"
             try:
                 urllib.request.urlopen(url, urllib.parse.urlencode(data).encode(), timeout=15).read()
@@ -536,6 +569,17 @@ class TG:
         out = []
         for u in ups:
             self.offset = u["update_id"] + 1
+            q = u.get("callback_query")
+            if q:                                              # inline button (yes / cancel)
+                try:
+                    urllib.request.urlopen(f"https://api.telegram.org/bot{self.tok}/answerCallbackQuery",
+                                           urllib.parse.urlencode({"callback_query_id": q["id"]}).encode(),
+                                           timeout=15).read()
+                except Exception:
+                    pass
+                if str((q.get("message") or {}).get("chat", {}).get("id")) == str(self.chat):
+                    out.append("cb:" + str(q.get("data", "")))
+                continue
             m = u.get("message") or {}
             if str(m.get("chat", {}).get("id")) == str(self.chat):
                 t = (m.get("text") or "").strip()
@@ -646,8 +690,6 @@ class Bot:
         bal = self.balance_lines()
         out += ["", B(bal[0]), quote([item_lines(x) for x in bal[1:]])]
         out += ["", quote([T("rules", pct=pct(100 * self.max_pump, False))], expandable=True)]
-        if st.d.get("paused"):
-            out.append(B(T("paused")))
         out.append(I(T("updated", time=cairo_dt().strftime("%Y-%m-%d %H:%M"))))
         return "\n".join(x for x in out if x is not None)
 
@@ -948,6 +990,7 @@ def main():
                "" if test else redis_url)
     log(f"state saved in {'Redis ' + st.key if st.r is not None else st.path}")
     ex, tg = OKX(live), TG()
+    tg.paused_fn = lambda: bool(st.d.get("paused"))   # every message starts with the buying status
     acct = ""
     key_ok = True
     key_err = ""
@@ -1004,11 +1047,25 @@ def main():
     def handle_commands():
         for cmd in tg.commands():
             if cmd == "/stop":
-                st.d["paused"] = True; st.save()
+                if st.d.get("paused"):
+                    tg.send(T("already_off"))
+                else:                                   # ask first: a stray tap must not pause the plan
+                    tg.send(card(T("stop_confirm"), [T("stop_confirm_note")]),
+                            inline=[[(TXT["yes_stop"], "stop_yes"), (TXT["cancel"], "stop_no")]])
+            elif cmd == "cb:stop_yes":
+                if not st.d.get("paused"):
+                    st.d["paused"] = True; st.save()
                 tg.send(card(T("stopped"), [T("stopped_note")]))
+            elif cmd == "cb:stop_no":
+                tg.send(T("stop_cancelled") if not st.d.get("paused") else T("already_off"))
             elif cmd == "/resume":
-                st.d["paused"] = False; st.save()
-                tg.send(B(T("resumed")))
+                if st.d.get("paused"):
+                    st.d["paused"] = False; st.save()
+                    tg.send(B(T("resumed")))
+                else:
+                    tg.send(T("already_on"))
+            elif cmd == "/mode":
+                tg.send(T("paused") if st.d.get("paused") else T("already_on"))
             elif cmd in ("/status", "/start"):
                 tg.send(bot.summary(ex.ticker("BTC-USDT")[0]))
 
@@ -1133,6 +1190,14 @@ def selftest():
     st.lv(53400)["alts"] = "in progress"
     bot.alt_step(53400, 0.10)
     assert st.d["paused"]
+    # status line + keyboard follow the mode
+    tg.paused_fn = lambda: bool(st.d.get("paused"))
+    assert "متوقف" in tg.status_line() and keyboard(True)["keyboard"][0][1]["text"] == BTN_OFF_NOW
+    st.d["paused"] = False
+    assert "مفعّل" in tg.status_line() and keyboard(False)["keyboard"][0][2]["text"] == BTN_ON_NOW
+    assert len(keyboard(False)["keyboard"]) == 1 and len(keyboard(False)["keyboard"][0]) == 3
+    assert BUTTONS[BTN_ON_NOW] == "/mode" and BUTTONS["⏸ إيقاف الشراء"] == "/stop"
+    st.d["paused"] = True
     # budget cap
     st2 = State(os.path.join(d, "s2.json")); st2.d["spent"] = 2500
     b2 = Bot(ex, st2, tg)
