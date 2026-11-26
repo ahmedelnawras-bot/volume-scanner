@@ -965,12 +965,11 @@ class Bot:
         return plan, {lv: avail * p / wsum for lv, p in open_lv} if wsum else {}
 
     # ---- summary
-    def summary(self, btc=None, title=None):
+    def summary(self, btc=None, title=None, foot=()):
+        """Important numbers first; mode / plan details / start notes at the end."""
         st, live = self.st, self.ex.live
         spent = st.d["spent"]
-        out = [B(RLM + (title or TXT["t_summary"])), I(T("mode_live" if live else "mode_paper")),
-               B(T("active_b", start=money(st.d["b_start"]), time=st.d.get("b_time", "")) if self.is_b()
-                 else T("active_a"))]
+        out = [B(RLM + (title or TXT["t_summary"]))]
         if btc:
             q = [T("orders_open"), T("cancel_above", disarm=money(self.disarm_px()), pct=pct(100 * (self.disarm_px() / btc - 1)))] \
                 if st.d["armed"] else [T("arm_at", arm=money(self.arm_px()), pct=pct(100 * (self.arm_px() / btc - 1)))]
@@ -991,8 +990,7 @@ class Bot:
         out += ["", B(head),
                 quote([T("spent", amount=money(spent), pct=pct(100 * frac, False)),
                        T("left", amount=money(max(0.0, plan - spent))),
-                       RLM + bar(frac) + " " + iso(pct(100 * frac, False)),
-                       I(T("budget_rule", min=money(self.min_plan), max=money(self.max_plan)))])]
+                       RLM + bar(frac) + " " + iso(pct(100 * frac, False))])]
         show_plan = max(plan, self.min_plan)
         icons = {"waiting": "⏳", "placed": "📌", "placing": "📌", "filled": "✅", "filled (partial)": "🟡"}
         rows = []
@@ -1035,6 +1033,11 @@ class Bot:
         bal = self.balance_lines()
         out += ["", B(bal[0]), quote([item_lines(x) for x in bal[1:]])]
         out += ["", quote([T("rules", pct=pct(100 * self.max_pump, False))], expandable=True)]
+        out += ["", I(T("mode_live" if live else "mode_paper")),
+                I(T("active_b", start=money(st.d["b_start"]), time=st.d.get("b_time", "")) if self.is_b()
+                  else T("active_a"))]
+        out.append(I(T("budget_rule", min=money(self.min_plan), max=money(self.max_plan))))
+        out += [I(x) for x in foot]
         out.append(I(T("updated", time=cairo_dt().strftime("%Y-%m-%d %H:%M"))))
         return "\n".join(x for x in out if x is not None)
 
@@ -1442,11 +1445,11 @@ def main():
         return
     mode = "TEST REHEARSAL (paper, fake levels " + ", ".join(f"{lv:,.0f}" for lv, _ in LEVELS) + ")" if test \
         else ("LIVE" if live else "PAPER - no real orders")
-    head = TXT["t_start"] + (" (تجربة بمستويات افتراضية)" if test else "")
+    foot = [RLM + TXT["t_start"] + (" (تجربة بمستويات افتراضية)" if test else "")]
     if acct:
         log("OKX " + os.environ.get("LADDER_SUBACCOUNT", "spoot") + ": " + acct)
-        head += "\n" + T("t_account_ok", account=os.environ.get("LADDER_SUBACCOUNT", "spoot"))
-    tg.send(bot.summary(ex.ticker("BTC-USDT")[0], head))
+        foot.append(T("t_account_ok", account=os.environ.get("LADDER_SUBACCOUNT", "spoot")))
+    tg.send(bot.summary(ex.ticker("BTC-USDT")[0], foot=foot))
     # was the bot down? (last heartbeat saved in the state)
     now_ts = time.time()
     last_alive = st.d.get("alive")
