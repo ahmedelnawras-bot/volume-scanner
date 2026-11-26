@@ -26,6 +26,12 @@ Plan (agreed 2026-11-24)
              the limits go in at the level prices only, and only while BTC is under 55k. If a level's BTC fills but
              USDT for its alts is short, the alts are bought only while BTC is within +2% of that level; above that
              you get a PROBLEM alert and they wait for BTC to come back.
+  Plan B (button, agreed 2026-11-26): after a confirmation, cancels the open Plan A limits (verified; if a cancel
+             cannot be confirmed the switch stops), fixes the current BTC price as the start, buys the first
+             unfinished level's BTC share at once (IOC) + its alts, and places the other levels at
+             start x (original level / first unfinished original level). Same weights, alt rules, plan size.
+             Cancel above start x 65/55, re-place back at the start. Saved; pressing again changes nothing.
+             "Back to Plan A" button (confirmation) restores the Plan A prices for the levels not bought.
   No selling - the plan leaves selling for later.
 
 Settings (environment variables, or KEY=VALUE lines in extra.env / .env next to this file)
@@ -79,6 +85,42 @@ TXT = {
     "btn_off_now": "⏸ متوقف ✓",
     "status_on": "🟢 الشراء مفعّل",
     "status_off": "⏸ الشراء متوقف مؤقتًا",
+    "btn_plan_b": "🔄 التحويل إلى Plan B",
+    "btn_plan_a": "↩️ الرجوع إلى Plan A",
+    "label_a": " · Plan A",
+    "label_b": " · Plan B (من {start})",
+    "active_a": "🗂 الخطة النشطة: Plan A — مستويات ثابتة فوق الدعوم",
+    "active_b": "🗂 الخطة النشطة: Plan B — سعر البداية {start} (منذ {time})",
+    "b_confirm": "هل تريد التحويل إلى Plan B؟",
+    "b_confirm_note": "سيثبّت البوت سعر BTC لحظة الضغط على «نعم» (الآن نحو {price}) كأول مستوى شراء، ويشتري حصة BTC لهذا المستوى فورًا ثم العملات البديلة. تُلغى أوامر Plan A المفتوحة أولًا.",
+    "b_confirm_avg": "متوسط شراء BTC المتوقع للمستويات المتبقية: نحو {avg_b} (في Plan A: {avg_a}).",
+    "b_confirm_paused": "الشراء متوقف الآن، وسيُشغَّل تلقائيًا مع التحويل.",
+    "yes_b": "نعم، حوّل",
+    "yes_a": "نعم، ارجع",
+    "b_done_head": "🔄 تم التحويل إلى Plan B",
+    "b_done_body": "سعر البداية: {start}. المستويات الجديدة:",
+    "b_level_line": "• {px} | بدلًا من {orig} | المبلغ {amount}",
+    "b_level_done": "• {orig} | تم الشراء ضمن Plan A",
+    "b_instant": "⚡ اشترى البوت {qty} BTC فورًا بسعر {price}، بإجمالي {amount}. يشتري الآن العملات البديلة لهذا المستوى.",
+    "b_instant_partial": "⚠️ نُفّذ جزء من الشراء الفوري ({amount} من {wanted}). اعتُبر المستوى منفّذًا جزئيًا.",
+    "b_instant_none": "⚠️ لم يُنفَّذ الشراء الفوري. سيضع البوت أمر شراء محددًا عند {price}.",
+    "b_nofund": "⚠️ رصيد USDT المتاح لا يكفي للشراء الفوري. سيضع البوت أمر الشراء عند {price} بعد توفّر الرصيد.",
+    "b_failed_head": "🚨 تعذّر التحويل إلى Plan B",
+    "b_failed_body": "لم يتمكن البوت من التأكد من إلغاء أمر شراء BTC عند {level}. لم يرسل البوت أي أمر جديد، وما زالت الخطة النشطة Plan A.",
+    "b_failed_next": "راجع الأوامر المفتوحة على OKX، ثم اضغط «🔄 التحويل إلى Plan B» مرة أخرى.",
+    "a_failed_head": "🚨 تعذّر الرجوع إلى Plan A",
+    "a_failed_body": "لم يتمكن البوت من التأكد من إلغاء أمر شراء BTC عند {level}. ما زالت الخطة النشطة Plan B.",
+    "a_failed_next": "راجع الأوامر المفتوحة على OKX، ثم اضغط «↩️ الرجوع إلى Plan A» مرة أخرى.",
+    "b_min": "⚠️ لا يمكن التحويل: رصيد USDT أقل من الحد الأدنى للخطة ({min}).",
+    "b_all_done": "ℹ️ اكتملت كل مستويات الشراء، ولا يوجد ما يُحوَّل.",
+    "b_already": "أنت على Plan B بالفعل منذ {time}، بسعر بداية {start}. لن يُعاد حساب المستويات.",
+    "b_resumed": "▶️ تم تشغيل الشراء مع التحويل.",
+    "a_confirm": "هل تريد الرجوع إلى Plan A؟",
+    "a_confirm_note": "تُلغى أوامر Plan B المفتوحة، وتعود المستويات التي لم تُنفّذ إلى أسعار Plan A، ويضع البوت أوامرها عند وصول BTC إلى {arm}. المشتريات السابقة تبقى محسوبة.",
+    "a_done": "↩️ تمت العودة إلى Plan A. يضع البوت أوامر المستويات المتبقية عند وصول BTC إلى {arm}.",
+    "a_already": "أنت على Plan A بالفعل.",
+    "plan_cancelled": "لم يتغيّر شيء، وما زالت الخطة النشطة {pname}.",
+    "switch_broken": "⚠️ انقطع تحويل الخطة قبل اكتماله. لم تتغيّر الخطة النشطة. اضغط زر التحويل مرة أخرى إذا أردت.",
     "base_line": "💼 الميزانية الأساسية {base} | حجم الخطة الآن {plan} | {diff}",
     "base_low": "💼 الميزانية الأساسية {base} | الرصيد أقل من الحد الأدنى للخطة ({min})",
     "diff_below": "أقل بـ {pct}",
@@ -209,20 +251,22 @@ TXT = {
 }
 BTN_STATUS, BTN_STOP, BTN_RESUME = TXT["btn_status"], TXT["btn_stop"], TXT["btn_resume"]
 BTN_ON_NOW, BTN_OFF_NOW = TXT["btn_on_now"], TXT["btn_off_now"]
+BTN_PLAN_B, BTN_PLAN_A = TXT["btn_plan_b"], TXT["btn_plan_a"]
 
 
-def keyboard(paused):
-    """3 small buttons in one row; the button of the current mode carries a ✓."""
+def keyboard(paused, plan="A"):
+    """3 small buttons in one row (the current mode carries a ✓) + one plan button under them."""
     row = [BTN_STATUS, BTN_OFF_NOW, BTN_RESUME] if paused else [BTN_STATUS, BTN_STOP, BTN_ON_NOW]
-    return {"keyboard": [[{"text": x} for x in row]], "resize_keyboard": True, "is_persistent": True}
+    return {"keyboard": [[{"text": x} for x in row], [{"text": BTN_PLAN_A if plan == "B" else BTN_PLAN_B}]],
+            "resize_keyboard": True, "is_persistent": True}
 
 
 KEYBOARD = keyboard(False)
 BUTTONS = {BTN_STATUS: "/status", BTN_STOP: "/stop", BTN_RESUME: "/resume",
-           BTN_ON_NOW: "/mode", BTN_OFF_NOW: "/mode",               # pressing the ✓ button just reports the mode
+           BTN_ON_NOW: "/mode", BTN_OFF_NOW: "/mode", BTN_PLAN_B: "/planb", BTN_PLAN_A: "/plana",               # pressing the ✓ button just reports the mode
            # older labels, in case Telegram still shows an old keyboard
            "📊 عرض الملخص": "/status", "⏸ إيقاف الشراء": "/stop", "▶️ استئناف الشراء": "/resume"}
-RAW_KEYS = {"icon", "state", "reason", "dot", "diff"}          # values that are Arabic text, not numbers/Latin
+RAW_KEYS = {"icon", "state", "reason", "dot", "diff", "pname"}          # values that are Arabic text, not numbers/Latin
 _LATIN = re.compile(r"(?<![{A-Za-z0-9_])(BTC|USDT|OKX|ETH|\d+%)(?![A-Za-z0-9_}])")
 
 
@@ -551,11 +595,18 @@ class TG:
         self.offset = None
         self.paused_fn = None                    # set in main(): lambda -> True when buying is paused
         self.plan_fn = None                      # set in main(): lambda -> "base budget vs plan" line
+        self.label_fn = None                     # set in main(): lambda -> (plan name, label text)
 
     def status_line(self):
         if self.paused_fn is None:
             return ""
-        line = B(T("status_off" if self.paused_fn() else "status_on"))
+        label = ""
+        if self.label_fn is not None:
+            try:
+                label = self.label_fn()[1]
+            except Exception:
+                label = ""
+        line = B(T("status_off" if self.paused_fn() else "status_on") + label)
         if self.plan_fn is not None:
             try:
                 line += "\n" + self.plan_fn()
@@ -576,7 +627,8 @@ class TG:
                     "link_preview_options": json.dumps({"is_disabled": True}),
                     "reply_markup": json.dumps(
                         {"inline_keyboard": [[{"text": t, "callback_data": c} for t, c in r] for r in inline]}
-                        if inline else keyboard(bool(self.paused_fn and self.paused_fn())))}
+                        if inline else keyboard(bool(self.paused_fn and self.paused_fn()),
+                                                self.label_fn()[0] if self.label_fn else "A"))}
             url = f"https://api.telegram.org/bot{self.tok}/sendMessage"
             try:
                 urllib.request.urlopen(url, urllib.parse.urlencode(data).encode(), timeout=15).read()
@@ -671,6 +723,174 @@ class Bot:
         self.base_budget = 2600.0                       # the plan's original size, shown on every message
         self._pl_cache = (0.0, None)
 
+    # ---- Plan A / Plan B
+    def is_b(self):
+        return self.st.d.get("plan_name") == "B"
+
+    def px(self, lv):
+        """Price of a level in the active plan (Plan B keeps the same level slots at new prices)."""
+        if self.is_b():
+            return self.st.d.get("b_px", {}).get(str(lv), lv)
+        return lv
+
+    def arm_px(self):
+        return self.st.d["b_start"] if self.is_b() else self.arm
+
+    def disarm_px(self):
+        return self.st.d["b_start"] * self.disarm / self.arm if self.is_b() else self.disarm
+
+    def label(self):
+        if self.is_b():
+            return "B", T("label_b", start=money(self.st.d["b_start"])).lstrip(RLM)
+        return "A", T("label_a").lstrip(RLM)
+
+    def avg_px(self, prices):
+        """Average BTC price if every level in `prices` [(price, weight)] fills."""
+        w = sum(p for _, p in prices)
+        return w / sum(p / x for x, p in prices) if prices else 0.0
+
+    def cancel_open(self):
+        """Cancel every resting BTC limit and record any fill. Returns '' or the level that could not be confirmed."""
+        st, ex = self.st, self.ex
+        for lv, pct in LEVELS:
+            s = st.lv(lv)
+            if s["btc"] not in ("placed", "placing"):
+                continue
+            ok = False
+            for attempt in range(4):
+                try:
+                    ex.cancel("BTC-USDT", s["btc_id"])
+                    state, q, avg = ex.limit_state("BTC-USDT", s["btc_id"], None)
+                except Exception as e:
+                    log(f"cancel check {lv}: {e}")
+                    state, q, avg = "unknown", 0.0, 0.0
+                if state in ("canceled", "filled", "missing", "mmp_canceled"):
+                    ok = True
+                    break
+                time.sleep(1.0 if ex.live else 0)
+            if not ok:
+                return money(self.px(lv))
+            if state == "filled":
+                s["btc"] = "filled"
+            elif q > 0:
+                s["btc"] = "filled (partial)"
+            else:
+                s["btc"] = "waiting"
+            if q > 0:
+                s["btc_qty"], s["btc_cost"] = q, q * avg
+                st.add_fill("BTC", q, q * avg)
+            st.save()
+        st.d["armed"] = False
+        st.save()
+        return ""
+
+    def switch_to_b(self, btc):
+        st, ex = self.st, self.ex
+        if self.is_b():
+            self.tg.send(T("b_already", time=st.d.get("b_time", ""), start=money(st.d["b_start"])))
+            return
+        base = next((lv for lv, _ in LEVELS if st.lv(lv)["btc"] != "filled"), None)
+        if base is None:
+            self.tg.send(T("b_all_done"))
+            return
+        if self.plan_now()[0] < self.min_plan:
+            self.tg.send(T("b_min", min=money(self.min_plan)))
+            return
+        st.d["switching"] = "B"
+        st.save()
+        bad = self.cancel_open()
+        if bad:
+            st.d.pop("switching", None)
+            st.save()
+            self.tg.send(card(T("b_failed_head"), [T("b_failed_body", level=bad), T("b_failed_next")]))
+            return
+        base = next((lv for lv, _ in LEVELS if st.lv(lv)["btc"] != "filled"), None)   # a cancel may have filled it
+        if base is None:
+            st.d.pop("switching", None)
+            st.save()
+            self.tg.send(T("b_all_done"))
+            return
+        start = round(ex.ticker("BTC-USDT")[0], 1)
+        st.d["switch_n"] = st.d.get("switch_n", 0) + 1
+        st.d.update(plan_name="B", b_start=start, b_base=base, b_time=cairo_dt().strftime("%Y-%m-%d %H:%M"),
+                    b_px={str(lv): round(start * lv / base, 1) for lv, _ in LEVELS if lv <= base})
+        if st.d.get("paused"):
+            st.d["paused"] = False
+            self.tg.send(B(T("b_resumed")))
+        # money for every level not bought yet, same rule as Plan A (all available USDT, by weights)
+        plan, alloc = self.plan_now()
+        st.d["plan"] = plan
+        for lv, a in alloc.items():
+            st.lv(lv)["alloc"] = a
+        st.d.pop("switching", None)
+        st.save()
+        rows = []
+        for lv, p in LEVELS:
+            if lv > base:
+                rows.append(T("b_level_done", orig=money(lv)))
+            else:
+                rows.append(T("b_level_line", px=money(self.px(lv)), orig=money(lv), amount=money(self.alloc_of(lv, p))))
+        self.tg.send(card(T("b_done_head"), [T("b_done_body", start=money(start))] + [item(x) for x in rows]))
+        self.instant_buy(base)
+        now_px = ex.ticker("BTC-USDT")[0]
+        self.place_open(now_px, forced=True)
+        self.tick(now_px)
+
+    def instant_buy(self, lv):
+        """Plan B, first level: buy its BTC share now (IOC, at most `slip` above the ask)."""
+        st, ex = self.st, self.ex
+        s = st.lv(lv)
+        pct = dict(LEVELS)[lv]
+        resume = s["btc"] == "buying"
+        if not resume:
+            part = s["btc"] == "filled (partial)"
+            s["prev_qty"] = s.get("btc_qty", 0.0) if part else 0.0
+            s["prev_cost"] = s.get("btc_cost", 0.0) if part else 0.0
+        usd = self.alloc_of(lv, pct) * BTC_W - s["prev_cost"]
+        if usd < 1:
+            s["btc"] = "filled"
+            st.save()
+            return
+        if not resume and ex.usdt() < usd * 0.995:
+            self.tg.send(T("b_nofund", price=money(self.px(lv))))
+            return
+        s["btc"] = "buying"
+        st.save()
+        q, c = self.buy_now("BTC", usd, f"P{st.d.get('switch_n', 1)}L{lv}")
+        if q <= 0:
+            s["btc"] = "filled (partial)" if s["prev_qty"] else "waiting"
+            st.save()
+            self.tg.send(T("b_instant_none", price=money(self.px(lv))))
+            return
+        st.add_fill("BTC", q, c)
+        s["btc_qty"], s["btc_cost"] = s["prev_qty"] + q, s["prev_cost"] + c
+        s["btc"] = "filled" if c >= usd * 0.97 else "filled (partial)"
+        st.save()
+        msg = [T("b_instant", qty=fmt(round(q, 8)), price=money(c / q, 1), amount=money(c, 2))]
+        if s["btc"] == "filled (partial)":
+            msg.append(T("b_instant_partial", amount=money(c, 2), wanted=money(usd, 2)))
+        self.tg.send(card(T("filled_head", level=money(self.px(lv))), msg))
+
+    def switch_to_a(self):
+        st = self.st
+        if not self.is_b():
+            self.tg.send(T("a_already"))
+            return
+        bad = self.cancel_open()
+        if bad:
+            self.tg.send(card(T("a_failed_head"), [T("a_failed_body", level=bad), T("a_failed_next")]))
+            return
+        st.d.setdefault("b_history", []).append(
+            {"start": st.d.get("b_start"), "time": st.d.get("b_time"), "base": st.d.get("b_base")})
+        for k in ("b_start", "b_px", "b_base", "b_time"):
+            st.d.pop(k, None)
+        st.d["plan_name"] = "A"
+        for lv, _ in LEVELS:
+            if st.lv(lv)["btc"] == "waiting":
+                st.lv(lv).pop("alloc", None)
+        st.save()
+        self.tg.send(B(T("a_done", arm=money(self.arm))))
+
     # ---- plan size: from the USDT in the sub-account, clamped to [min_plan, max_plan]
     def cash_total(self):
         v = self.ex.usdt_total()
@@ -690,7 +910,8 @@ class Bot:
         if s["btc"] == "filled (partial)":
             target = a * BTC_W
             frac = min(1.0, s["btc_cost"] / target) if target else 0.0
-        return a * (1 - BTC_W) * frac, frac
+        done = sum(s.get("alt_done", {}).values())
+        return max(0.0, a * (1 - BTC_W) * frac - done), frac
 
     def plan_line(self):
         """'base 2,600 | plan now X | below/above by Y%' - every message, right under the status line."""
@@ -731,13 +952,15 @@ class Bot:
     def summary(self, btc=None, title=None):
         st, live = self.st, self.ex.live
         spent = st.d["spent"]
-        out = [B(RLM + (title or TXT["t_summary"])), I(T("mode_live" if live else "mode_paper"))]
+        out = [B(RLM + (title or TXT["t_summary"])), I(T("mode_live" if live else "mode_paper")),
+               B(T("active_b", start=money(st.d["b_start"]), time=st.d.get("b_time", "")) if self.is_b()
+                 else T("active_a"))]
         if btc:
-            q = [T("orders_open"), T("cancel_above", disarm=money(self.disarm), pct=pct(100 * (self.disarm / btc - 1)))] \
-                if st.d["armed"] else [T("arm_at", arm=money(self.arm), pct=pct(100 * (self.arm / btc - 1)))]
+            q = [T("orders_open"), T("cancel_above", disarm=money(self.disarm_px()), pct=pct(100 * (self.disarm_px() / btc - 1)))] \
+                if st.d["armed"] else [T("arm_at", arm=money(self.arm_px()), pct=pct(100 * (self.arm_px() / btc - 1)))]
             nxt = [lv for lv, _ in LEVELS if not st.lv(lv)["btc"].startswith("filled")]
             if nxt:
-                q.append(T("next_level", level=money(nxt[0]), pct=pct(100 * (nxt[0] / btc - 1))))
+                q.append(T("next_level", level=money(self.px(nxt[0])), pct=pct(100 * (self.px(nxt[0]) / btc - 1))))
             out += ["", self.btc_line(btc), quote(q)]
         if st.d["armed"] or spent > 0:
             plan, head = st.d.get("plan", spent), T("budget", amount=money(st.d.get("plan", spent)))
@@ -768,7 +991,7 @@ class Bot:
                 state = TXT["st_" + b]
             else:
                 state = b
-            rows.append(item(T("level_line", icon=icons.get(b, "⛔"), level=money(lv), amount=money(s_.get("alloc") or p * show_plan),
+            rows.append(item(T("level_line", icon=icons.get(b, "⛔"), level=money(self.px(lv)), amount=money(s_.get("alloc") or p * show_plan),
                                 state=_ltr(html.escape(state, quote=False)))))
         out += ["", B(T("levels_head")), quote(rows)]
         held = [(c, f) for c, f in st.d["fills"].items() if f["qty"] > 0]
@@ -846,32 +1069,42 @@ class Bot:
 
     # ---- BTC limits
     def btc_step(self, btc):
+        st = self.st
+        if not st.d["armed"] and btc <= self.arm_px():
+            self.place_open(btc)
+            return
+        self.watch(btc)
+
+    def place_open(self, btc, forced=False):
+        """Place resting BTC limits for every level not bought yet (Plan A: at 55k; Plan B: right away)."""
         st, ex = self.st, self.ex
         open_lv = [(lv, pct) for lv, pct in LEVELS if st.lv(lv)["btc"] in ("waiting", "placed")]
-        if not st.d["armed"] and btc <= self.arm and open_lv:
+        if st.d["armed"] or not open_lv:
+            return
+        if True:
             plan, alloc = self.plan_now()
             if plan < self.min_plan:
                 st.d["unfunded"] = True
                 have = max(0.0, plan - st.d["spent"])
                 self.once_alert("btc_min", card(T("min_head"), [
-                    T("min_body", price=money(btc), arm=money(self.arm), have=f"{have:,.0f}",
+                    T("min_body", price=money(btc), arm=money(self.arm_px()), have=f"{have:,.0f}",
                       min=f"{self.min_plan:,.0f}"),
                     T("min_next", gap=f"{self.min_plan - plan:,.0f}")]))
                 for lv, pct in open_lv:
-                    if btc <= lv:
-                        self.once_alert(f"miss{lv}", card(T("missed_head", level=money(lv)), [
-                            T("missed_body"), T("missed_next", level=money(lv))]))
+                    if btc <= self.px(lv):
+                        self.once_alert(f"miss{lv}", card(T("missed_head", level=money(self.px(lv))), [
+                            T("missed_body"), T("missed_next", level=money(self.px(lv)))]))
                 return
             need = sum(alloc[lv] * BTC_W for lv, pct in open_lv if st.lv(lv)["btc"] == "waiting")
             if ex.usdt() < need * 0.995:
                 st.d["unfunded"] = True
                 self.once_alert("btc_bal", card(T("nofund_head"), [
-                    T("nofund_body", price=money(btc), arm=money(self.arm), amount=f"{need:,.2f}"),
+                    T("nofund_body", price=money(btc), arm=money(self.arm_px()), amount=f"{need:,.2f}"),
                     T("nofund_next")]))
                 for lv, pct in open_lv:
-                    if btc <= lv:
-                        self.once_alert(f"miss{lv}", card(T("missed_head", level=money(lv)), [
-                            T("missed_body"), T("missed_next", level=money(lv))]))
+                    if btc <= self.px(lv):
+                        self.once_alert(f"miss{lv}", card(T("missed_head", level=money(self.px(lv))), [
+                            T("missed_body"), T("missed_next", level=money(self.px(lv)))]))
                 return
             if st.d.pop("unfunded", False):
                 self.tg.send(B(T("funded")))
@@ -883,27 +1116,31 @@ class Bot:
                 if s["btc"] != "waiting":
                     continue
                 s["alloc"] = alloc[lv]
-                sz = floor_to(alloc[lv] * BTC_W / lv, lot)
+                sz = floor_to(alloc[lv] * BTC_W / self.px(lv), lot)
                 if sz < mn:
                     s["btc"], s["alts"] = "skipped (size)", s["alts"]
                     continue
                 s["btc_id"] = f"B{lv}r{st.d['arm_round']}"
                 s["btc"] = "placing"
                 st.save()
-                ex.place_limit("BTC-USDT", lv, sz, s["btc_id"])
+                ex.place_limit("BTC-USDT", self.px(lv), sz, s["btc_id"])
                 s["btc"] = "placed"
                 st.save()
-                placed.append(T("placed_line", level=money(lv), qty=fmt(sz), amount=money(sz * lv, 2)))
+                placed.append(T("placed_line", level=money(self.px(lv)), qty=fmt(sz), amount=money(sz * self.px(lv), 2)))
             st.d["armed"] = True
             st.d["plan"] = plan
             self._last_resize = time.time()
             st.save()
             msg = [T("placed_head") + ("" if ex.live else " (وضع تجريبي، دون أوامر حقيقية)")]
-            msg += [T("placed_reason", price=money(btc), arm=money(self.arm)) + "\n" +
-                    T("placed_plan", amount=money(plan))] + placed
-            msg += [T("placed_cancel", disarm=money(self.disarm))]
-            self.tg.send(card(msg[0], [msg[1]] + [item(x) for x in msg[2:-1]] + [I(msg[-1])]))
-            return
+            reason = T("placed_plan", amount=money(plan)) if forced else \
+                T("placed_reason", price=money(btc), arm=money(self.arm_px())) + "\n" + T("placed_plan", amount=money(plan))
+            msg += [reason] + placed
+            msg += [T("placed_cancel", disarm=money(self.disarm_px()))]
+            if placed:
+                self.tg.send(card(msg[0], [msg[1]] + [item(x) for x in msg[2:-1]] + [I(msg[-1])]))
+
+    def watch(self, btc):
+        st, ex = self.st, self.ex
         if not st.d["armed"]:
             return
         # check fills
@@ -916,7 +1153,7 @@ class Bot:
                 s["btc"], s["btc_qty"], s["btc_cost"] = "filled", q, q * avg
                 st.add_fill("BTC", q, q * avg)
                 st.save()
-                self.tg.send(card(T("filled_head", level=money(lv)), [
+                self.tg.send(card(T("filled_head", level=money(self.px(lv))), [
                     T("filled_body", qty=fmt(round(q, 8)), price=money(avg, 1), amount=money(q * avg, 2)),
                     I(T("filled_next"))]))
             elif state in ("canceled", "missing", "mmp_canceled"):
@@ -925,13 +1162,13 @@ class Bot:
                     s["btc"], s["btc_qty"], s["btc_cost"] = "filled (partial)", q, q * avg
                     st.add_fill("BTC", q, q * avg)
                 st.save()
-                self.tg.send(card(T("gone_head", level=money(lv)), [T("gone_partial" if q > 0 else "gone_again")]))
+                self.tg.send(card(T("gone_head", level=money(self.px(lv))), [T("gone_partial" if q > 0 else "gone_again")]))
         # more USDT arrived while orders are open -> bigger orders at the SAME prices
-        if btc < self.disarm and time.time() - self._last_resize >= self.resize_every:
+        if btc < self.disarm_px() and time.time() - self._last_resize >= self.resize_every:
             self._last_resize = time.time()
             self.resize()
         # disarm above the cancel price
-        if btc >= self.disarm:
+        if btc >= self.disarm_px():
             for lv, pct in LEVELS:
                 s = st.lv(lv)
                 if s["btc"] != "placed":
@@ -946,8 +1183,8 @@ class Bot:
                 st.save()
             st.d["armed"] = False
             st.save()
-            self.tg.send(card(T("disarm_head", disarm=money(self.disarm), price=money(btc)),
-                              [T("disarm_body"), T("disarm_next", arm=money(self.arm))]))
+            self.tg.send(card(T("disarm_head", disarm=money(self.disarm_px()), price=money(btc)),
+                              [T("disarm_body"), T("disarm_next", arm=money(self.arm_px()))]))
 
     def resize(self):
         st, ex = self.st, self.ex
@@ -970,15 +1207,15 @@ class Bot:
                 st.add_fill("BTC", q, q * avg)
                 st.save()
                 continue
-            sz = floor_to(a * BTC_W / lv, lot)
+            sz = floor_to(a * BTC_W / self.px(lv), lot)
             s["resize_n"] = s.get("resize_n", 0) + 1
             s["btc_id"] = f"B{lv}r{st.d['arm_round']}u{s['resize_n']}"
             s["btc"], s["alloc"] = "placing", a
             st.save()
-            ex.place_limit("BTC-USDT", lv, sz, s["btc_id"])
+            ex.place_limit("BTC-USDT", self.px(lv), sz, s["btc_id"])
             s["btc"] = "placed"
             st.save()
-            lines.append(item(T("placed_line", level=money(lv), qty=fmt(sz), amount=money(sz * lv, 2))))
+            lines.append(item(T("placed_line", level=money(self.px(lv)), qty=fmt(sz), amount=money(sz * self.px(lv), 2))))
         st.d["plan"] = plan
         st.save()
         if lines:
@@ -1019,38 +1256,44 @@ class Bot:
         if s["alts"] == "in progress":
             st.d["paused"] = True
             st.save()
-            self.tg.send(card(T("broken_head", level=money(lv)), [T("broken_body")]))
+            self.tg.send(card(T("broken_head", level=money(self.px(lv))), [T("broken_body")]))
             return
         need, frac = self.alt_need(lv, pct)
         if st.d["spent"] + need > self.max_plan * 1.001:
             s["alts"] = "skipped (budget)"
             st.save()
-            self.tg.send(T("budget_alts", level=money(lv)))
+            self.tg.send(T("budget_alts", level=money(self.px(lv))))
             return
-        ceiling = lv * (1 + self.alt_tol)
+        ceiling = self.px(lv) * (1 + self.alt_tol)
         if btc is not None and btc > ceiling:
-            self.once_alert(f"alt_far{lv}", card(T("altfar_head", level=money(lv)), [
+            self.once_alert(f"alt_far{lv}", card(T("altfar_head", level=money(self.px(lv))), [
                 T("altfar_body", price=money(btc), ceiling=money(ceiling)),
                 T("altfar_next", ceiling=money(ceiling))]))
             return
         if self.ex.usdt() < need * 0.995:
-            self.once_alert(f"alt_bal{lv}", card(T("altfund_head"), [T("altfund_body", level=money(lv), amount=f"{need:,.2f}"),
+            self.once_alert(f"alt_bal{lv}", card(T("altfund_head"), [T("altfund_body", level=money(self.px(lv)), amount=f"{need:,.2f}"),
                 T("altfund_next", ceiling=money(ceiling))]))
             return
         s["alts"] = "in progress"
         st.save()
-        report = [T("alts_head", level=money(lv)) + ("" if self.ex.live else " (تجريبي)"),
+        report = [T("alts_head", level=money(self.px(lv))) + ("" if self.ex.live else " (تجريبي)"),
                   T("alts_amount", amount=money(need, 2))]
         backup_usd = 0.0
+        done = s.setdefault("alt_done", {})                 # per coin: money already bought / sent to backup
         for coin, w in ALTS:
-            usd = self.alloc_of(lv, pct) * w * frac
+            usd = self.alloc_of(lv, pct) * w * frac - done.get(coin, 0.0)
+            if usd < 0.5:
+                continue
             ok, why = self.ok_to_buy(coin)
             if not ok:
                 backup_usd += usd
+                done[coin] = done.get(coin, 0.0) + usd
+                st.save()
                 report.append(T("alt_skipped", coin=coin, reason=why, amount=money(usd, 2)))
                 continue
             q, c = self.buy_now(coin, usd, f"A{lv}")
             st.add_fill(coin, q, c)
+            done[coin] = done.get(coin, 0.0) + c
             st.save()
             report.append(T("alt_bought", coin=coin, qty=fmt(round(q, 8)), price=f"{c / q if q else 0:,.6g}",
                             amount=money(c, 2)))
@@ -1073,22 +1316,22 @@ class Bot:
         st.save()
         self.tg.send(card(report[0], [report[1]] + [item(x, split=True) for x in report[2:]]))
         try:
-            self.tg.send(self.summary(btc, T("t_after_fill", level=money(lv))[1:]))
+            self.tg.send(self.summary(btc, T("t_after_fill", level=money(self.px(lv)))[1:]))
         except Exception as e:
             log(f"summary after fill failed: {e}")
 
     def near_check(self, btc):
         """One alert when BTC comes within 3% of the trigger; re-armed after it goes 5% above."""
         st = self.st
-        if st.d["armed"] or btc > self.arm * 1.05:
+        if st.d["armed"] or btc > self.arm_px() * 1.05:
             if st.d.get("near_sent"):
                 st.d["near_sent"] = False
                 st.save()
             return
-        if btc <= self.arm * 1.03 and not st.d.get("near_sent"):
+        if btc <= self.arm_px() * 1.03 and not st.d.get("near_sent"):
             st.d["near_sent"] = True
             st.save()
-            lines = [T("near_body", price=money(btc), pct=pct(100 * (self.arm / btc - 1)), arm=money(self.arm))]
+            lines = [T("near_body", price=money(btc), pct=pct(100 * (self.arm_px() / btc - 1)), arm=money(self.arm_px()))]
             if not self.ex.live:
                 lines.append(T("near_paper"))
             else:
@@ -1114,6 +1357,12 @@ class Bot:
                 self.tg.send(self.summary(btc, T("target_head", target=money(tgt))[1:]))
 
     def tick(self, btc):
+        if self.st.d.pop("switching", None):
+            self.st.save()
+            self.tg.send(T("switch_broken"))
+        for lv, _ in LEVELS:
+            if self.st.lv(lv)["btc"] == "buying":           # restart during the Plan B instant buy: same client ids,
+                self.instant_buy(lv)                       # so OKX returns the order already sent - no double buy
         if self.st.d.get("paused"):
             return
         self.btc_step(btc)
@@ -1170,6 +1419,7 @@ def main():
               min_plan=g("LADDER_MIN_BUDGET", 500), max_plan=g("LADDER_MAX_BUDGET", 4000))
     bot.base_budget = g("LADDER_BASE_BUDGET", 2600)
     tg.plan_fn = bot.plan_line                        # 2nd line of every message: base budget vs plan now
+    tg.label_fn = bot.label                           # active plan in the status line + the plan button
     if "--status" in sys.argv:
         print(bot.summary(ex.ticker("BTC-USDT")[0]))
         return
@@ -1230,6 +1480,34 @@ def main():
                 tg.send(T("paused") if st.d.get("paused") else T("already_on"))
             elif cmd in ("/status", "/start"):
                 tg.send(bot.summary(ex.ticker("BTC-USDT")[0]))
+            elif cmd == "/planb":
+                if bot.is_b():
+                    tg.send(T("b_already", time=st.d.get("b_time", ""), start=money(st.d["b_start"])))
+                    continue
+                p_now = ex.ticker("BTC-USDT")[0]
+                base = next((lv for lv, _ in LEVELS if st.lv(lv)["btc"] != "filled"), None)
+                if base is None:
+                    tg.send(T("b_all_done"))
+                    continue
+                rest = [(lv, w) for lv, w in LEVELS if lv <= base]
+                lines = [T("b_confirm_note", price=money(p_now)),
+                         T("b_confirm_avg", avg_b=money(bot.avg_px([(p_now * lv / base, w) for lv, w in rest])),
+                           avg_a=money(bot.avg_px(rest)))]
+                if st.d.get("paused"):
+                    lines.append(T("b_confirm_paused"))
+                tg.send(card(T("b_confirm"), lines), inline=[[(TXT["yes_b"], "b_yes"), (TXT["cancel"], "b_no")]])
+            elif cmd == "cb:b_yes":
+                bot.switch_to_b(ex.ticker("BTC-USDT")[0])
+            elif cmd == "/plana":
+                if not bot.is_b():
+                    tg.send(T("a_already"))
+                    continue
+                tg.send(card(T("a_confirm"), [T("a_confirm_note", arm=money(bot.arm))]),
+                        inline=[[(TXT["yes_a"], "a_yes"), (TXT["cancel"], "a_no")]])
+            elif cmd == "cb:a_yes":
+                bot.switch_to_a()
+            elif cmd in ("cb:b_no", "cb:a_no"):
+                tg.send(T("plan_cancelled", pname=iso("Plan B" if bot.is_b() else "Plan A")))
 
     while True:
         try:
@@ -1361,7 +1639,8 @@ def selftest():
     assert "متوقف" in tg.status_line() and keyboard(True)["keyboard"][0][1]["text"] == BTN_OFF_NOW
     st.d["paused"] = False
     assert "مفعّل" in tg.status_line() and keyboard(False)["keyboard"][0][2]["text"] == BTN_ON_NOW
-    assert len(keyboard(False)["keyboard"]) == 1 and len(keyboard(False)["keyboard"][0]) == 3
+    assert len(keyboard(False)["keyboard"]) == 2 and len(keyboard(False)["keyboard"][0]) == 3
+    assert keyboard(False)["keyboard"][1][0]["text"] == BTN_PLAN_B and keyboard(False, "B")["keyboard"][1][0]["text"] == BTN_PLAN_A
     assert BUTTONS[BTN_ON_NOW] == "/mode" and BUTTONS["⏸ إيقاف الشراء"] == "/stop"
     st.d["paused"] = True
     # budget cap
@@ -1430,6 +1709,57 @@ def selftest():
     assert "الحد الأقصى" in lines[10000] and "53.8%" in lines[10000], lines[10000]
     tgx = TG(); tgx.paused_fn = lambda: False; tgx.plan_fn = lambda: lines[1800]
     assert tgx.status_line().count("\n") == 1 and "30.8%" in tgx.status_line()
+    # ---- Plan B
+    eb, sb, bb, outb = fresh("sb.json", 2600.0)
+    eb.px["BTC"] = 59000.0
+    bb.tick(59000)
+    assert not sb.d["armed"]
+    sb.d["paused"] = True                                  # paused + switch -> switches on and buys
+    bb.switch_to_b(59000)
+    assert bb.is_b() and sb.d["b_start"] == 59000 and not sb.d["paused"]
+    l1 = sb.lv(53400)
+    assert l1["btc"] == "filled" and abs(l1["btc_cost"] - 260 * 0.30) < 1.5, l1   # instant BTC buy, its share only
+    assert l1["alts"] == "done" and abs(sb.d["fills"]["ADA"]["cost"] - 52) < 1.5    # alts right after
+    px2 = round(59000 * 52600 / 53400, 1)
+    assert bb.px(52600) == px2 and sb.lv(52600)["btc"] == "placed" and sb.d["armed"]
+    assert eb.paper_limits[sb.lv(52600)["btc_id"]][1] == px2, "Plan B limit at the scaled price"
+    assert bb.px(49200) == round(59000 * 49200 / 53400, 1)
+    n_lim, start = len(eb.paper_limits), sb.d["b_start"]
+    eb.px["BTC"] = 61000.0; bb.switch_to_b(61000)          # pressing again: no recompute, no new orders
+    assert sb.d["b_start"] == start and len(eb.paper_limits) == n_lim and any("بالفعل" in t for t in outb)
+    eb.px["BTC"] = 59000 * 1.19; bb.tick(eb.px["BTC"])     # +18% above the start -> cancel
+    assert not sb.d["armed"] and sb.lv(52600)["btc"] == "waiting"
+    eb.px["BTC"] = 59500.0; bb.tick(59500); assert not sb.d["armed"]
+    eb.px["BTC"] = 58900.0; bb.tick(58900); assert sb.d["armed"], "re-placed when back at the start price"
+    eb.px["BTC"] = 58000.0; bb.tick(58000)                 # 58,116 fills -> its alts, ceiling = 58,116 + 2%
+    assert sb.lv(52600)["btc"] == "filled" and sb.lv(52600)["alts"] == "done"
+    assert any("Plan B" in x for x in [bb.summary(58000)]), "summary shows the active plan"
+    bb.switch_to_a()                                       # back to Plan A
+    assert not bb.is_b() and not sb.d["armed"] and bb.px(51000) == 51000
+    assert sb.lv(53400)["btc"] == "filled" and sb.lv(51000)["btc"] == "waiting"
+    # Plan A partly done, then switch: level 1 untouched, first unfinished level takes the start price
+    ec, sc, bc, outc = fresh("sc.json", 2600.0)
+    ec.px["BTC"] = 54000; bc.tick(54000)
+    ec.px["BTC"] = 53300; bc.tick(53300)                   # Plan A level 53,400 + its alts
+    ada_before = sc.d["fills"]["ADA"]["cost"]
+    old_ids = [sc.lv(lv)["btc_id"] for lv in (52600, 51000)]
+    ec.px["BTC"] = 58000; bc.switch_to_b(58000)
+    assert all(ec.paper_limits[i][3] == "canceled" for i in old_ids), "Plan A orders cancelled first"
+    assert sc.d["b_base"] == 52600 and bc.px(52600) == 58000 and bc.px(53400) == 53400
+    assert sc.lv(52600)["btc"] == "filled" and bc.px(51000) == round(58000 * 51000 / 52600, 1)
+    assert abs(sc.d["fills"]["ADA"]["cost"] - ada_before - sc.lv(52600)["alloc"] * 0.20) < 1.5, "no double alt buy"
+    # cancel cannot be confirmed -> stop, stay on Plan A, nothing new sent
+    class Stuck(Fake):
+        def cancel(self, inst, cl):
+            pass
+        def limit_state(self, inst, cl, last_px=None):
+            return ("live", 0.0, 0.0) if last_px is None else super().limit_state(inst, cl, last_px)
+    ed, sd, bd, outd = fresh("sd.json", 2600.0)
+    ed.__class__ = Stuck
+    ed.px["BTC"] = 54000; bd.tick(54000)
+    n_lim = len(ed.paper_limits)
+    bd.switch_to_b(54000)
+    assert not bd.is_b() and len(ed.paper_limits) == n_lim and any("تعذّر التحويل" in t for t in outd)
     e6, s6, b6, out6 = fresh("s6.json", 500.0)
     e6.px["BTC"] = 48000; b6.tick(48000); b6.tick(48000)
     assert all(s6.lv(lv)["alts"] == "done" for lv, _ in LEVELS) and 490 < s6.d["spent"] <= 500.5, s6.d["spent"]
@@ -1438,7 +1768,9 @@ def selftest():
     print("\nSELFTEST OK: limits placed at 55k, wick fill, alts bought once, ADA pump -> 60/40 BTC/ETH backup, "
           "ETH pump -> backup all BTC, halted coin skipped, cancel at 65k and re-place at 55k, budget cap, crash pause, NO-MONEY: missed level alerted, no buy after bounce, limits only at levels, alts wait for BTC <= level+2%, "
           "PLAN SIZE: under 500 no orders, 1,000 -> 100 at level 1, +2,000 later -> open limits resized at the same "
-          "prices over the remaining levels, 10,000 -> capped at 4,000, 500 -> all levels and alts filled")
+          "prices over the remaining levels, 10,000 -> capped at 4,000, 500 -> all levels and alts filled, "
+          "PLAN B: instant first level + alts, scaled limits, no recompute on 2nd press, +18% cancel / re-place, "
+          "back to A, switch after a Plan A fill (no double alts), unconfirmed cancel stops the switch")
 
 
 if __name__ == "__main__":
