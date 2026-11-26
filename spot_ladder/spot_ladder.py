@@ -107,10 +107,10 @@ TXT = {
     "b_nofund": "⚠️ رصيد USDT المتاح لا يكفي للشراء الفوري. سيضع البوت أمر الشراء عند {price} بعد توفّر الرصيد.",
     "b_failed_head": "🚨 تعذّر التحويل إلى Plan B",
     "b_failed_body": "لم يتمكن البوت من التأكد من إلغاء أمر شراء BTC عند {level}. لم يرسل البوت أي أمر جديد، وما زالت الخطة النشطة Plan A.",
-    "b_failed_next": "راجع الأوامر المفتوحة على OKX، ثم اضغط «🔄 التحويل إلى Plan B» مرة أخرى.",
+    "b_failed_next": "راجع الأوامر المفتوحة على OKX، ثم اختر «🔄 التحويل إلى Plan B» من القائمة مرة أخرى.",
     "a_failed_head": "🚨 تعذّر الرجوع إلى Plan A",
     "a_failed_body": "لم يتمكن البوت من التأكد من إلغاء أمر شراء BTC عند {level}. ما زالت الخطة النشطة Plan B.",
-    "a_failed_next": "راجع الأوامر المفتوحة على OKX، ثم اضغط «↩️ الرجوع إلى Plan A» مرة أخرى.",
+    "a_failed_next": "راجع الأوامر المفتوحة على OKX، ثم اختر «↩️ الرجوع إلى Plan A» من القائمة مرة أخرى.",
     "b_min": "⚠️ لا يمكن التحويل: رصيد USDT أقل من الحد الأدنى للخطة ({min}).",
     "b_all_done": "ℹ️ اكتملت كل مستويات الشراء، ولا يوجد ما يُحوَّل.",
     "b_already": "أنت على Plan B بالفعل منذ {time}، بسعر بداية {start}. لن يُعاد حساب المستويات.",
@@ -120,7 +120,7 @@ TXT = {
     "a_done": "↩️ تمت العودة إلى Plan A. يضع البوت أوامر المستويات المتبقية عند وصول BTC إلى {arm}.",
     "a_already": "أنت على Plan A بالفعل.",
     "plan_cancelled": "لم يتغيّر شيء، وما زالت الخطة النشطة {pname}.",
-    "switch_broken": "⚠️ انقطع تحويل الخطة قبل اكتماله. لم تتغيّر الخطة النشطة. اضغط زر التحويل مرة أخرى إذا أردت.",
+    "switch_broken": "⚠️ انقطع تحويل الخطة قبل اكتماله. لم تتغيّر الخطة النشطة. اختر التحويل من القائمة مرة أخرى إذا أردت.",
     "base_line": "💼 الميزانية الأساسية {base} | حجم الخطة الآن {plan} | {diff}",
     "base_low": "💼 الميزانية الأساسية {base} | الرصيد أقل من الحد الأدنى للخطة ({min})",
     "diff_below": "أقل بـ {pct}",
@@ -128,12 +128,12 @@ TXT = {
     "diff_above_max": "أعلى بـ {pct} (الحد الأقصى)",
     "diff_same": "مطابق للخطة ✅",
     "stop_confirm": "هل تريد إيقاف الشراء مؤقتًا؟",
-    "stop_confirm_note": "لن يرسل البوت أوامر شراء جديدة حتى تضغط «▶️ تشغيل».",
+    "stop_confirm_note": "لن يرسل البوت أوامر شراء جديدة حتى تختار «▶️ تشغيل الشراء» من القائمة.",
     "yes_stop": "نعم، أوقف",
     "cancel": "إلغاء",
     "stop_cancelled": "لم يتغيّر شيء، والشراء ما زال مفعّلًا.",
     "already_on": "الشراء مفعّل بالفعل.",
-    "already_off": "الشراء متوقف بالفعل. للتشغيل اضغط «▶️ تشغيل».",
+    "already_off": "الشراء متوقف بالفعل. للتشغيل اختر «▶️ تشغيل الشراء» من القائمة.",
     "t_summary": "📊 ملخص خطة الشراء المتدرّج",
     "t_morning": "☀️ ملخص الصباح",
     "t_evening": "🌙 ملخص المساء",
@@ -180,7 +180,7 @@ TXT = {
     "rules": "⚙️ بعد تنفيذ أمر شراء BTC عند أي مستوى، يشتري البوت العملات البديلة المخصصة لهذا المستوى. "
              "إذا ارتفع سعر إحدى العملات بأكثر من {pct} خلال آخر ٢٤ ساعة، يستبعدها البوت ويوزّع المبلغ المخصص لها: "
              "60% لشراء BTC و40% لشراء ETH. البوت ينفّذ عمليات شراء فقط.",
-    "paused": "⏸ الشراء متوقف مؤقتًا. للمتابعة، اضغط «▶️ تشغيل».",
+    "paused": "⏸ الشراء متوقف مؤقتًا. للمتابعة، اختر «▶️ تشغيل الشراء» من القائمة.",
     "updated": "🕒 آخر تحديث: {time} بتوقيت القاهرة",
     "placed_head": "📌 وضع البوت أوامر شراء BTC على OKX",
     "placed_reason": "وصل سعر BTC إلى {price}، وهو أقل من سعر التفعيل {arm}.",
@@ -219,11 +219,11 @@ TXT = {
     "altfar_body": "لم يتوفر رصيد USDT وقت الشراء. ارتفع BTC الآن إلى {price} وتجاوز الحد المحدد للشراء ({ceiling}).",
     "altfar_next": "ينتظر البوت عودة BTC إلى {ceiling} أو أقل. عندها يشتري العملات البديلة إذا كان الرصيد كافيًا.",
     "broken_head": "🚨 توقّف شراء العملات البديلة لمستوى {level} قبل اكتماله",
-    "broken_body": "أوقف البوت الشراء مؤقتًا لتجنّب تكرار الشراء. راجع الأوامر على OKX وصحّح حالة التنفيذ في البوت، ثم اضغط «▶️ استئناف الشراء».",
+    "broken_body": "أوقف البوت الشراء مؤقتًا لتجنّب تكرار الشراء. راجع الأوامر على OKX وصحّح حالة التنفيذ في البوت، ثم اختر «▶️ تشغيل الشراء» من القائمة.",
     "budget_btc": "⚠️ لم يضع البوت أوامر شراء BTC لأن قيمتها تتجاوز الميزانية المحددة.",
     "budget_alts": "⚠️ لم يشترِ البوت العملات البديلة لمستوى {level} لأن تكلفة الشراء تتجاوز الميزانية المحددة.",
     "error": "⚠️ حدث خطأ في البوت: {error}",
-    "stopped": "⏸ تم إيقاف الشراء مؤقتًا. لن يرسل البوت أي أوامر شراء جديدة حتى تضغط «▶️ تشغيل».",
+    "stopped": "⏸ تم إيقاف الشراء مؤقتًا. لن يرسل البوت أي أوامر شراء جديدة حتى تختار «▶️ تشغيل الشراء» من القائمة.",
     "stopped_note": "📌 أوامر شراء BTC المفتوحة على OKX تظل نشطة، وقد تُنفّذ أثناء الإيقاف المؤقت.",
     "resumed": "▶️ تم استئناف الشراء.",
     # --- added 2026-11-25: bot down, approaching the trigger, API key, targets
@@ -627,8 +627,7 @@ class TG:
                     "link_preview_options": json.dumps({"is_disabled": True}),
                     "reply_markup": json.dumps(
                         {"inline_keyboard": [[{"text": t, "callback_data": c} for t, c in r] for r in inline]}
-                        if inline else keyboard(bool(self.paused_fn and self.paused_fn()),
-                                                self.label_fn()[0] if self.label_fn else "A"))}
+                        if inline else {"remove_keyboard": True})}   # buttons live in the "Menu" list now
             url = f"https://api.telegram.org/bot{self.tok}/sendMessage"
             try:
                 urllib.request.urlopen(url, urllib.parse.urlencode(data).encode(), timeout=15).read()
@@ -640,6 +639,23 @@ class TG:
                 urllib.request.urlopen(url, urllib.parse.urlencode(data).encode(), timeout=15).read()
         except Exception as e:
             log("telegram send failed: " + str(e).replace(self.tok, "<token>"))   # never print the token
+
+    MENU = [("status", "📊 عرض الملخص"), ("stop", "⏸ إيقاف الشراء"), ("resume", "▶️ تشغيل الشراء"),
+            ("planb", "🔄 التحويل إلى Plan B"), ("plana", "↩️ الرجوع إلى Plan A")]
+
+    def set_menu(self):
+        """The commands list behind Telegram's "Menu" button (next to the message box) - replaces the big buttons."""
+        if not (self.tok and self.chat):
+            return
+        base = f"https://api.telegram.org/bot{self.tok}/"
+        try:
+            urllib.request.urlopen(base + "setMyCommands", urllib.parse.urlencode({"commands": json.dumps(
+                [{"command": c, "description": d} for c, d in self.MENU], ensure_ascii=False)}).encode(),
+                timeout=15).read()
+            urllib.request.urlopen(base + "setChatMenuButton", urllib.parse.urlencode({
+                "chat_id": self.chat, "menu_button": json.dumps({"type": "commands"})}).encode(), timeout=15).read()
+        except Exception as e:
+            log("telegram menu failed: " + str(e).replace(self.tok, "<token>"))
 
     def commands(self):
         if not (self.tok and self.chat):
@@ -1419,7 +1435,8 @@ def main():
               min_plan=g("LADDER_MIN_BUDGET", 500), max_plan=g("LADDER_MAX_BUDGET", 4000))
     bot.base_budget = g("LADDER_BASE_BUDGET", 2600)
     tg.plan_fn = bot.plan_line                        # 2nd line of every message: base budget vs plan now
-    tg.label_fn = bot.label                           # active plan in the status line + the plan button
+    tg.label_fn = bot.label                           # active plan in the status line
+    tg.set_menu()
     if "--status" in sys.argv:
         print(bot.summary(ex.ticker("BTC-USDT")[0]))
         return
@@ -1639,6 +1656,7 @@ def selftest():
     assert "متوقف" in tg.status_line() and keyboard(True)["keyboard"][0][1]["text"] == BTN_OFF_NOW
     st.d["paused"] = False
     assert "مفعّل" in tg.status_line() and keyboard(False)["keyboard"][0][2]["text"] == BTN_ON_NOW
+    assert [c for c, _ in TG.MENU] == ["status", "stop", "resume", "planb", "plana"]
     assert len(keyboard(False)["keyboard"]) == 2 and len(keyboard(False)["keyboard"][0]) == 3
     assert keyboard(False)["keyboard"][1][0]["text"] == BTN_PLAN_B and keyboard(False, "B")["keyboard"][1][0]["text"] == BTN_PLAN_A
     assert BUTTONS[BTN_ON_NOW] == "/mode" and BUTTONS["⏸ إيقاف الشراء"] == "/stop"
